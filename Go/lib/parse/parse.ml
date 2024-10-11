@@ -6,6 +6,22 @@ open! Base
 open Ast
 open Angstrom
 
+(*
+   func factorial(n int) int {
+    if n == 1 {
+        return 1
+    }
+
+    return n * factorial(n-1)
+}
+*)
+
+(*
+   - choice - match для парсеров, чтобы хотя бы один сработал 
+- sep_by - например для аргументов функции, разделенных запятой
+-
+*)
+
 let is_keyword = function
   (* https://go.dev/ref/spec#Keywords *)
   | "break"
@@ -18,56 +34,63 @@ let is_keyword = function
   | "func"
   | "go"
   | "if"
-  | "import"
-  | "interface"
-  | "map"
   | "range"
   | "return"
   | "type"
-  | "var" ->
-      true
-  | _ ->
-      false
-  ;;
+  | "var" -> true
+  | _ -> false
+;;
 
+let is_whitespace = function
+  | ' ' | '\t' | '\n' | '\r' -> true
+  | _ -> false
+;;
 
-let is_emptyspace = function ' ' | '\t' | '\n' | '\r' -> true | _ -> false
+let is_digit = function
+  | '0' .. '9' -> true
+  | _ -> false
+;;
 
-let is_digit = function '0' .. '9' -> true | _ -> false
+let parse_int = take_while1 is_digit >>| Int.of_string
 
 let is_char = function
-  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' ->
-      true
-  | _ ->
-      false
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+  | _ -> false
+;;
 
-let parse_str parser str =
-  Angstrom.parse_string ~consume:Angstrom.Consume.All parser str
-  |> Result.ok_or_failwith
+let parse_newlines = take_while1 (Char.equal '\n')
 
-let parse_identifier =
+(** Separator for statements *)
+let parse_stmt_sep = parse_newlines <|> string ";"
 
+let parse_whitespace = take_while is_whitespace
+
+(*
+   кароче нужно построить один большой парсер из кучи маленьких
+   каждый маленький возвращает кусочек аст и так строится дерево из поддеревьев??
+*)
+
+let parse parser str =
+  Angstrom.parse_string ~consume:Angstrom.Consume.All parser str |> Result.ok_or_failwith
+;;
+
+let parse_ident =
   let is_first_char_valid = function
-    | 'a' .. 'z' | 'A' .. 'Z' | '_' ->
-        true
-    | _ ->
-        false
+    | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
+    | _ -> false
   in
   let* first_char = peek_char in
   match first_char with
   | Some chr when is_first_char_valid chr ->
-      let* ident = take_while is_char in
-      if is_keyword ident then fail "This is a keyword" else return ident
-  | _ ->
-      fail "Invalid identifier name"
+    let* ident = take_while is_char in
+    if is_keyword ident then fail "This is a keyword" else return ident
+  | _ -> fail "Invalid identifier name"
+;;
 
 let parse_type t =
-    match t with
-    | "int" ->
-        return Type_int
-    | "string" ->
-        return Type_string
-    | "bool" ->
-        return Type_bool
-    | _ ->
-        fail @@ "Invalid type"
+  match t with
+  | "int" -> return Type_int
+  | "string" -> return Type_string
+  | "bool" -> return Type_bool
+  | _ -> fail @@ "Invalid type"
+;;

@@ -3,4 +3,6 @@
  (public_name Go.Parse)
  (libraries base angstrom ast)
  (instrumentation
-  (backend bisect_ppx)))
+  (backend bisect_ppx))
+ (preprocess
+  (pps ppx_expect ppx_inline_test)))
