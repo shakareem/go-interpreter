@@ -45,19 +45,14 @@ let skip_whitespace = skip_while Char.is_whitespace
 (* at least one newline *)
 let parse_newline = skip_while is_space_or_tab *> char '\n' <* skip_whitespace
 let parse_stmt_sep = parse_newline <|> skip_whitespace *> char ';' <* skip_whitespace
-
-let parse_const_int =
-  take_while1 is_digit >>| fun num -> return (Const_int (Int.of_string num))
-;;
+let parse_const_int = take_while1 is_digit >>| fun num -> Const_int (Int.of_string num)
 
 let parse_const_bool =
-  string "true" <|> string "false" >>| fun bl -> return (Const_bool (Bool.of_string bl))
+  string "true" <|> string "false" >>| fun bl -> Const_bool (Bool.of_string bl)
 ;;
 
 let parse_const_string =
-  let parse_string =
-    take_till (Char.equal '"') >>| fun str -> return (Const_string str)
-  in
+  let parse_string = take_till (Char.equal '"') >>| fun str -> Const_string str in
   char '"' *> parse_string <* char '"'
 ;;
 
