@@ -5,3 +5,5 @@
 open! Base
 open Ast
 open Angstrom
+
+let parse_stmt = return Stmt_break (* заглушка чтобы компилятор не ругался *)

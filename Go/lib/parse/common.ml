@@ -61,6 +61,8 @@ let parse_const_string =
   char '"' *> parse_string <* char '"'
 ;;
 
+let parse_const = choice [ parse_const_int; parse_const_string; parse_const_bool ]
+
 let parse_ident =
   let is_first_char_valid = function
     | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
@@ -75,10 +77,11 @@ let parse_ident =
 ;;
 
 (* TODO: add arrays and functions *)
-let parse_type t =
-  match t with
-  | "int" -> return Type_int
-  | "string" -> return Type_string
-  | "bool" -> return Type_bool
-  | _ -> fail @@ "Invalid type"
+let parse_type =
+  choice
+    [ string "int" *> return Type_int
+    ; string "string" *> return Type_string
+    ; string "bool" *> return Type_bool
+    ]
+    ~failure_msg:"Invalid type"
 ;;
