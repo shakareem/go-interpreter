@@ -6,7 +6,9 @@ open! Base
 open Ast
 open Angstrom
 
-val skip_whitespase: unit t
+val ws: unit t
+
+val ws_line: unit t
 
 (** Separator for the statements, [;] or [\n] *)
 val parse_stmt_sep: char t 
