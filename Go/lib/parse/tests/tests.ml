@@ -7,9 +7,13 @@ open Ast
 open Expr
 open Pp
 
+(*    {|
+    (Expr_bin_oper (Bin_substract, (Expr_call (Expr_ident "factorial", Const_int 5)),
+     (Expr_call (Expr_ident "factorial", Const_int 4))))|}]
+*)
 let%expect_test "expr_call test" =
-  pp pp_expr parse_expr "fac(5) - fac(4)";
+  pp pp_expr parse_expr "fac(4)";
   [%expect
     {|
-    Error: Wrong Syntax|}]
+    (Expr_call ((Expr_ident "fac"), [(Expr_call ((Expr_ident "ar"), []))]))|}]
 ;;
