@@ -56,11 +56,11 @@ let parse_simple_expr =
     ]
 ;;
 
-let rec parse_func_call pexpr =
+let parse_func_call pexpr =
   lift2
     (fun id ls -> Expr_call (Expr_ident id, ls))
     (ws *> parse_ident)
-    (token "(" *> many_sep (token ",") parse_simple_expr <* token ")")
+    (token "(" *> many_sep (token ",") pexpr <* token ")")
 ;;
 
 let parse_expr =
@@ -68,6 +68,7 @@ let parse_expr =
     let arg = choice [ parse_func_call expr; parse_simple_expr ] in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
     let arg = chainl1 arg (pesum <|> pesub) in
+    let arg = fix (fun expr -> arg) <|> arg in
     arg)
 ;;
 
