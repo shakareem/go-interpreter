@@ -7,6 +7,7 @@ open Ast
 open Angstrom
 open Common
 
+
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
   e >>= fun init -> go init
@@ -14,6 +15,11 @@ let chainl1 e op =
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
 let token s = ws *> string s <* ws
+let parens p = token "(" *> p <* token ")"
+
+let penot expr = token "!" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_not, expr)
+let peusb expr = token "-" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_minus, expr)
+
 let pesum = token "+" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_sum, exp1, exp2))
 
 let pemul =
@@ -60,14 +66,17 @@ let parse_func_call pexpr =
   lift2
     (fun id ls -> Expr_call (Expr_ident id, ls))
     (ws *> parse_ident)
-    (token "(" *> many_sep (token ",") pexpr <* token ")")
+    (parens (many_sep (token ",") pexpr))
 ;;
 
 let parse_expr =
   fix (fun expr ->
     let arg = choice [ parse_func_call expr; parse_simple_expr ] in
+    let arg = penot arg <|> arg in
+    let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
     let arg = chainl1 arg (pesum <|> pesub) in
+    let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in  
     let arg = fix (fun expr -> arg) <|> arg in
     arg)
 ;;

@@ -26,3 +26,35 @@ let%expect_test "expr_call test" =
             ))
           ]))|}]
 ;;
+
+let%expect_test "fac_piece1 test" =
+  pp pp_expr parse_expr "n * fac(n-1)";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_multiply, (Expr_ident "n"),
+       (Expr_call
+          ((Expr_ident "fac"),
+           [(Expr_bin_oper (Bin_subtract, (Expr_ident "n"),
+               (Expr_const (Const_int 1))))
+             ]))
+       ))|}]
+;;
+
+
+let%expect_test "fac_piece2 test" =
+  pp pp_expr parse_expr "n <= 1";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_less_equal, (Expr_ident "n"), (Expr_const (Const_int 1))
+       ))|}]
+;;
+
+let%expect_test "unary_min test" =
+  pp pp_expr parse_expr "-n + 2 + -1";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_sum,
+       (Expr_bin_oper (Bin_sum, (Expr_un_oper (Unary_minus, (Expr_ident "n"))),
+          (Expr_const (Const_int 2)))),
+       (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1))))))|}]
+;;
