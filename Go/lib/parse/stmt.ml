@@ -7,7 +7,8 @@ open Ast
 open Angstrom
 open Common
 
-let parse_var_decl = return () (* TODO *)
+let parse_var_decl_in_func = return ()
+let parse_var_decl_any = parse_var_decl_top_level *> return () <|> parse_var_decl_in_func
 let parse_assign = return () (* TODO *)
 let parse_incr = parse_ident <* string "++" >>| fun id -> Stmt_incr id
 let parse_decr = parse_ident <* string "--" >>| fun id -> Stmt_decr id
@@ -25,7 +26,7 @@ let parse_go = string "go" *> ws_line *> return () (* заглушка *)
 
 let parse_stmt =
   choice
-    [ parse_var_decl
+    [ parse_var_decl_any
     ; parse_assign
     ; parse_incr *> return () (* заглушка *)
     ; parse_decr *> return () (* заглушка *)
@@ -46,6 +47,6 @@ let parse_stmt =
 ;;
 
 let rec parse_block : block t =
-  let parse_stmts = many_sep ~sep:(char ',') ~parser:parse_stmt in
+  let parse_stmts = many_sep ~sep:parse_stmt_sep ~parser:parse_stmt in
   char '{' *> ws *> parse_stmts <* ws <* char '}'
 ;;

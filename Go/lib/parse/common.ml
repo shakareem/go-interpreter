@@ -40,6 +40,16 @@ let is_space_or_tab = function
   | _ -> false
 ;;
 
+let many_sep ~sep ~parser =
+  sep_by sep parser
+  >>| fun list ->
+  let rec helper = function
+    | hd :: tl -> hd :: helper tl
+    | [] -> []
+  in
+  helper list
+;;
+
 let skip_whitespace = skip_while Char.is_whitespace
 let skip_line_whitespace = skip_while is_space_or_tab
 
@@ -94,12 +104,35 @@ let parse_type =
     ~failure_msg:"Invalid type"
 ;;
 
-let many_sep ~sep ~parser =
-  sep_by sep parser
-  >>| fun list ->
-  let rec helper = function
-    | hd :: tl -> hd :: helper tl
-    | [] -> []
+let parse_idents = many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident
+let parse_inits = return [] (* заглушка, нужны expr *)
+
+(* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state*)
+let parse_var_decl_top_level =
+  let build_var_decl_parser idents vars_type inits =
+    match vars_type, inits with
+    | Some t, _ :: _ ->
+      if List.length idents != List.length inits
+      then Decl_with_init (None, [])
+      else Decl_no_init (t, idents) (* надо сделать список из пар из двух списков *)
+    | Some t, [] -> Decl_no_init (t, idents)
+    | None, _ :: _ ->
+      if List.length idents != List.length inits
+      then Decl_with_init (None, [])
+      else
+        Decl_no_init (Type_int, idents)
+        (* надо сделать список из пар из двух списков *)
+    | None, [] -> Decl_with_init (None, [])
   in
-  helper list
+  let parse_vars_type : type' option t =
+    ws_line *> parse_type
+    <* ws_line
+    >>| (fun t -> Some t)
+    <|> ws_line *> return (None : type' option)
+  in
+  lift3
+    build_var_decl_parser
+    (string "var" *> ws *> parse_idents)
+    parse_vars_type
+    (char '=' *> ws *> parse_inits)
 ;;

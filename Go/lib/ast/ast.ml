@@ -150,7 +150,6 @@ and var_decl =
   | Decl_with_init of type' option * (ident * expr) list
   (** Declarations with initialization such as:
       [var my_func func() = func() {}],
-      [var a int, b int = 1, 2],
       [var a, b int = 1, 2],
       [var a, b = 1 + 2, "3"],
       [flag, count := true, 0].
