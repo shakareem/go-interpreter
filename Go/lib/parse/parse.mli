@@ -6,4 +6,4 @@ open! Base
 open Ast
 open Angstrom
 
-val parse: 'a t -> string -> 'a
+val parse : 'a t -> string -> 'a

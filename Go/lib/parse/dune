@@ -1,7 +1,10 @@
+(include_subdirs qualified)
+
 (library
  (name parse)
  (public_name Go.Parse)
  (libraries base angstrom ast)
+ (inline_tests)
  (instrumentation
   (backend bisect_ppx))
  (preprocess
