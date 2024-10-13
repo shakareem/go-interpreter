@@ -93,3 +93,13 @@ let parse_type =
     ]
     ~failure_msg:"Invalid type"
 ;;
+
+let many_sep ~sep ~parser =
+  sep_by sep parser
+  >>| fun list ->
+  let rec helper = function
+    | hd :: tl -> hd :: helper tl
+    | [] -> []
+  in
+  helper list
+;;

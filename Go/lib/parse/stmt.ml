@@ -41,18 +41,11 @@ let parse_stmt =
     ; parse_defer
     ; parse_go
     ]
+    ~failure_msg:"Incorrect statement"
   *> return Stmt_break (* заглушка *)
 ;;
 
 let rec parse_block : block t =
-  let parse_stmts =
-    sep_by parse_stmt_sep parse_stmt
-    >>| fun list ->
-    let rec helper = function
-      | hd :: tl -> hd :: helper tl
-      | [] -> []
-    in
-    helper list
-  in
+  let parse_stmts = many_sep ~sep:(char ',') ~parser:parse_stmt in
   char '{' *> ws *> parse_stmts <* ws <* char '}'
 ;;

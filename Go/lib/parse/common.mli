@@ -10,8 +10,10 @@ val ws: unit t
 
 val ws_line: unit t
 
+val many_sep: sep:'a t -> parser:'b t -> 'b list t
+
 (** Separator for the statements, [;] or [\n] *)
-val parse_stmt_sep: char t 
+val parse_stmt_sep: unit t 
 
 val parse_const: const t
 
