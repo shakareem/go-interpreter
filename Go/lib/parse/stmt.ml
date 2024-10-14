@@ -7,13 +7,31 @@ open Ast
 open Angstrom
 open Common
 open Expr
+open Stmt
 
 let parse_var_decl_in_func = return () (* TODO *)
 let parse_var_decl_any = parse_var_decl_top_level *> return () <|> parse_var_decl_in_func
 let parse_assign = return () (* TODO *)
 let parse_incr = parse_ident <* string "++" >>| fun id -> Stmt_incr id
 let parse_decr = parse_ident <* string "--" >>| fun id -> Stmt_decr id
-let parse_if = return () (* TODO *)
+
+let parse_if =
+  let parse_init =
+    parse_stmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None
+  in
+  let parse_else =
+    string "else" *> ws *> parse_block >>| (fun block -> Some block) <|> return None
+  in
+  string "if"
+  *> ws
+  *> lift4
+       (fun init cond if_body else_body -> Stmt_if (init, cond, if_body, else_body))
+       parse_init
+       (parse_expr <* ws_line)
+       (parse_block <* ws_line)
+       parse_else
+;;
+
 let parse_for = return () (* TODO *)
 let parse_range = return () (* TODO *)
 let parse_break = string "break" *> return Stmt_break
