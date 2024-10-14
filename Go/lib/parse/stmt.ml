@@ -15,6 +15,7 @@ let parse_assign = return () (* TODO *)
 let parse_incr = parse_ident <* string "++" >>| fun id -> Stmt_incr id
 let parse_decr = parse_ident <* string "--" >>| fun id -> Stmt_decr id
 
+(* в ините нужно парсить только parse_var_decl_in_func *)
 let parse_if =
   let parse_init =
     parse_stmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None
@@ -32,6 +33,7 @@ let parse_if =
        parse_else
 ;;
 
+(* можно парсить [for range 1000] как [for i := 0; i < 1000; i++] *)
 let parse_for = return () (* TODO *)
 let parse_range = return () (* TODO *)
 let parse_break = string "break" *> return Stmt_break
@@ -55,7 +57,7 @@ let parse_stmt =
     ; parse_assign
     ; parse_incr *> return () (* заглушка *)
     ; parse_decr *> return () (* заглушка *)
-    ; parse_if
+    ; parse_if *> return () (* заглушка *)
     ; parse_for
     ; parse_range
     ; parse_break *> return () (* заглушка *)

@@ -21,4 +21,6 @@ val parse_ident: string t
 
 val parse_type: type' t
 
+val build_var_decl_parser: ident list -> type' option -> expr list -> var_decl
+
 val parse_var_decl_top_level: var_decl t

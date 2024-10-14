@@ -115,26 +115,31 @@ let parse_inits =
   *> many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
 ;;
 
+let rec combine_lists l1 l2 =
+  match l1, l2 with
+  | [], [] -> []
+  | x :: xs, y :: ys -> (x, y) :: combine_lists xs ys
+  | _, _ -> assert false
+;;
+
 (* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state *)
 let parse_var_decl_top_level =
-  let build_var_decl_parser idents vars_type (inits : expr list) =
+  let build_var_decl_parser idents vars_type inits =
     match vars_type, inits with
     | Some t, _ :: _ ->
       if List.length idents != List.length inits
       then Decl_with_init (None, [])
-      else Decl_with_init (t, List.combine idents inits)
+      else Decl_with_init (Some t, combine_lists idents inits)
     | Some t, [] -> Decl_no_init (t, idents)
     | None, _ :: _ ->
       if List.length idents != List.length inits
       then Decl_with_init (None, [])
-      else Decl_with_init (Type_int, List.combine idents inits)
+      else Decl_with_init (Some Type_int, combine_lists idents inits)
     | None, [] -> Decl_with_init (None, [])
+    (* error *)
   in
-  let parse_vars_type : type' option t =
-    ws_line *> parse_type
-    <* ws_line
-    >>| (fun t -> Some t)
-    <|> ws_line *> return (None : type' option)
+  let parse_vars_type =
+    ws_line *> parse_type <* ws_line >>| (fun t -> Some t) <|> ws_line *> return None
   in
   lift3
     build_var_decl_parser
