@@ -7,12 +7,13 @@ open Ast
 open Angstrom
 open Common
 open Expr
+open Stmt
 
 let parse_func_decl =
   lift2
     (fun name args_returns_and_body -> name, args_returns_and_body)
     (string "func" *> ws *> parse_ident <* ws_line)
-    parse_anon_func
+    (parse_anon_func parse_block)
 ;;
 
 let parse_top_decl =

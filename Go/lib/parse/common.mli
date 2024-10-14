@@ -6,10 +6,16 @@ open! Base
 open Ast
 open Angstrom
 
+val pp : (Format.formatter -> 'a -> unit) -> 'a t -> ident -> unit
+
 val ws : unit t
+
 val ws_line : unit t
+
 val token : ident -> ident t
+
 val parens : 'a t -> 'a t
+
 val many_sep : sep:'a t -> parser:'b t -> 'b list t
 
 (** Separator for the statements, [;] or [\n] *)
@@ -20,7 +26,3 @@ val parse_const: const t
 val parse_ident: string t
 
 val parse_type: type' t
-
-val build_var_decl_parser: ident list -> type' option -> expr list -> var_decl
-
-val parse_var_decl_top_level: var_decl t

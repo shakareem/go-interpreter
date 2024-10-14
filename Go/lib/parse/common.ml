@@ -5,8 +5,12 @@
 open! Base
 open Ast
 open Angstrom
-open Expr
-open Stmt
+
+let pp printer parser str =
+  match Angstrom.parse_string ~consume:Angstrom.Consume.All parser str with
+  | Ok res -> printer Format.std_formatter res
+  | Error res -> print_endline res
+;;
 
 let is_keyword = function
   (* https://go.dev/ref/spec#Keywords *)
@@ -106,46 +110,4 @@ let parse_type =
     ; string "bool" *> return Type_bool
     ]
     ~failure_msg:"Invalid type"
-;;
-
-let parse_inits =
-  ws_line
-  *> char '='
-  *> ws
-  *> many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
-;;
-
-let rec combine_lists l1 l2 =
-  match l1, l2 with
-  | [], [] -> []
-  | x :: xs, y :: ys -> (x, y) :: combine_lists xs ys
-  | _, _ -> assert false
-;;
-
-(* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state *)
-let parse_var_decl_top_level =
-  let build_var_decl_parser idents vars_type inits =
-    match vars_type, inits with
-    | Some t, _ :: _ ->
-      if List.length idents != List.length inits
-      then Decl_with_init (None, [])
-      else Decl_with_init (Some t, combine_lists idents inits)
-    | Some t, [] -> Decl_no_init (t, idents)
-    | None, _ :: _ ->
-      if List.length idents != List.length inits
-      then Decl_with_init (None, [])
-      else Decl_with_init (Some Type_int, combine_lists idents inits)
-    | None, [] -> Decl_with_init (None, [])
-    (* error *)
-  in
-  let parse_vars_type =
-    ws_line *> parse_type <* ws_line >>| (fun t -> Some t) <|> ws_line *> return None
-  in
-  lift3
-    build_var_decl_parser
-    (string "var"
-     *> ws
-     *> many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident)
-    parse_vars_type
-    (char '=' *> ws *> parse_inits)
 ;;

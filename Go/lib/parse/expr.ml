@@ -6,7 +6,6 @@ open! Base
 open Ast
 open Angstrom
 open Common
-open Stmt
 
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
@@ -54,15 +53,12 @@ let peand = token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1,
 let peor = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
 
 let parse_simple_expr =
-  choice
-    [ (let* const = parse_const in
-       return (Expr_const const))
-    ; (let* id = parse_ident in
-       return (Expr_ident id))
-    ]
+  parse_const
+  >>| (fun const -> Expr_const const)
+  <|> (parse_ident >>| fun id -> Expr_ident id)
 ;;
 
-(* нужен парсер типа func_call t, чтобы переиспользовать в стейтментах *)
+(* нужно переиспользовать в стейтментах *)
 let parse_func_call pexpr =
   lift2
     (fun id ls -> Expr_call (Expr_ident id, ls))
@@ -78,12 +74,9 @@ let parse_expr =
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
     let arg = chainl1 arg (pesum <|> pesub) in
     let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in
-    (* mb choice instead of <|> *)
-    let arg = fix (fun expr -> arg) <|> arg in
+    let arg = fix (fun _ -> arg) <|> arg in
     arg)
 ;;
-
-let parse_expr_bin_op = choice []
 
 (* only (a, b, c int) args supported, TODO: (a string, b int) *)
 let parse_func_args =
@@ -108,10 +101,61 @@ let construct_anon_func args returns body =
   { args; returns; body }
 ;;
 
-let parse_anon_func =
+let parse_anon_func parse_block =
   lift3
     construct_anon_func
     (parse_func_args <* ws_line)
     (parse_func_return_values <* ws_line)
     parse_block
+;;
+
+let parse_expr_anon_func parse_block = string "func" *> ws *> parse_anon_func parse_block
+
+(******************************* Tests ********************************)
+
+let%expect_test "expr_call test" =
+  pp pp_expr parse_expr "fac(4 + fac(4 + 4))";
+  [%expect
+    {|
+    (Expr_call
+       ((Expr_ident "fac"),
+        [(Expr_bin_oper (Bin_sum, (Expr_const (Const_int 4)),
+            (Expr_call
+               ((Expr_ident "fac"),
+                [(Expr_bin_oper (Bin_sum, (Expr_const (Const_int 4)),
+                    (Expr_const (Const_int 4))))
+                  ]))
+            ))
+          ]))|}]
+;;
+
+let%expect_test "fac_piece1 test" =
+  pp pp_expr parse_expr "n * fac(n-1)";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_multiply, (Expr_ident "n"),
+       (Expr_call
+          ((Expr_ident "fac"),
+           [(Expr_bin_oper (Bin_subtract, (Expr_ident "n"),
+               (Expr_const (Const_int 1))))
+             ]))
+       ))|}]
+;;
+
+let%expect_test "fac_piece2 test" =
+  pp pp_expr parse_expr "n <= 1";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_less_equal, (Expr_ident "n"), (Expr_const (Const_int 1))
+       ))|}]
+;;
+
+let%expect_test "unary_min test" =
+  pp pp_expr parse_expr "-n + 2 + -1";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_sum,
+       (Expr_bin_oper (Bin_sum, (Expr_un_oper (Unary_minus, (Expr_ident "n"))),
+          (Expr_const (Const_int 2)))),
+       (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1))))))|}]
 ;;
