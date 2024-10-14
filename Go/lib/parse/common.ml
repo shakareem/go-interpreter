@@ -5,6 +5,8 @@
 open! Base
 open Ast
 open Angstrom
+open Expr
+open Stmt
 
 let is_keyword = function
   (* https://go.dev/ref/spec#Keywords *)
@@ -63,7 +65,9 @@ let parse_block_comment =
 
 let parse_comment = parse_line_comment <|> parse_block_comment
 let ws = many (skip_whitespace *> parse_comment) *> skip_whitespace
-let ws_line = many (skip_line_whitespace *> parse_line_comment) *> skip_line_whitespace
+let ws_line = many (skip_line_whitespace *> parse_block_comment) *> skip_line_whitespace
+let token s = ws_line *> string s <* ws
+let parens p = token "(" *> p <* token ")"
 
 (* at least one newline *)
 let parse_newline = skip_while is_space_or_tab *> char '\n' *> ws
@@ -104,24 +108,26 @@ let parse_type =
     ~failure_msg:"Invalid type"
 ;;
 
-let parse_idents = many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident
-let parse_inits = return [] (* заглушка, нужны expr *)
+let parse_inits =
+  ws_line
+  *> char '='
+  *> ws
+  *> many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
+;;
 
-(* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state*)
+(* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state *)
 let parse_var_decl_top_level =
-  let build_var_decl_parser idents vars_type inits =
+  let build_var_decl_parser idents vars_type (inits : expr list) =
     match vars_type, inits with
     | Some t, _ :: _ ->
       if List.length idents != List.length inits
       then Decl_with_init (None, [])
-      else Decl_no_init (t, idents) (* надо сделать список из пар из двух списков *)
+      else Decl_with_init (t, List.combine idents inits)
     | Some t, [] -> Decl_no_init (t, idents)
     | None, _ :: _ ->
       if List.length idents != List.length inits
       then Decl_with_init (None, [])
-      else
-        Decl_no_init (Type_int, idents)
-        (* надо сделать список из пар из двух списков *)
+      else Decl_with_init (Type_int, List.combine idents inits)
     | None, [] -> Decl_with_init (None, [])
   in
   let parse_vars_type : type' option t =
@@ -132,7 +138,9 @@ let parse_var_decl_top_level =
   in
   lift3
     build_var_decl_parser
-    (string "var" *> ws *> parse_idents)
+    (string "var"
+     *> ws
+     *> many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident)
     parse_vars_type
     (char '=' *> ws *> parse_inits)
 ;;

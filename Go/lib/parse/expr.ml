@@ -6,7 +6,7 @@ open! Base
 open Ast
 open Angstrom
 open Common
-
+open Stmt
 
 let chainl1 e op =
   let rec go acc = lift2 (fun f x -> f acc x) op e >>= go <|> return acc in
@@ -14,11 +14,11 @@ let chainl1 e op =
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
-let token s = ws *> string s <* ws
-let parens p = token "(" *> p <* token ")"
-
 let penot expr = token "!" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_not, expr)
-let peusb expr = token "-" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_minus, expr)
+
+let peusb expr =
+  token "-" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_minus, expr)
+;;
 
 let pesum = token "+" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_sum, exp1, exp2))
 
@@ -62,11 +62,12 @@ let parse_simple_expr =
     ]
 ;;
 
+(* нужен парсер типа func_call t, чтобы переиспользовать в стейтментах *)
 let parse_func_call pexpr =
   lift2
     (fun id ls -> Expr_call (Expr_ident id, ls))
-    (ws *> parse_ident)
-    (parens (many_sep (token ",") pexpr))
+    (ws *> parse_ident <* ws_line)
+    (parens (many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:pexpr))
 ;;
 
 let parse_expr =
@@ -76,9 +77,41 @@ let parse_expr =
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
     let arg = chainl1 arg (pesum <|> pesub) in
-    let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in  
+    let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in
+    (* mb choice instead of <|> *)
     let arg = fix (fun expr -> arg) <|> arg in
     arg)
 ;;
 
 let parse_expr_bin_op = choice []
+
+(* only (a, b, c int) args supported, TODO: (a string, b int) *)
+let parse_func_args =
+  parens
+    (lift2
+       (fun args t -> List.map ~f:(fun arg -> arg, t) args)
+       (many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_ident <* ws_line)
+       parse_type)
+;;
+
+(* TODO: (a int, b string) *)
+let parse_func_return_values =
+  parse_type >>| (fun t -> Only_types [ t ]) <|> return (Only_types [])
+;;
+
+let construct_anon_func args returns body =
+  let returns : return_values option =
+    match returns with
+    | Only_types (_ :: _) | Ident_and_types _ -> Some returns
+    | Only_types [] -> None
+  in
+  { args; returns; body }
+;;
+
+let parse_anon_func =
+  lift3
+    construct_anon_func
+    (parse_func_args <* ws_line)
+    (parse_func_return_values <* ws_line)
+    parse_block
+;;

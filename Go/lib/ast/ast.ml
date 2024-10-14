@@ -89,7 +89,7 @@ and anon_func =
       Empty list means that function doesn't take any arguments.
       The second example will be processed at parsing
       as [func(a int, b int, c string) ...] *)
-  ; return_types : return_values option
+  ; returns : return_values option
   (** None if function doesn't return anything. See return_values type *)
   ; body : block (** function body *)
   }

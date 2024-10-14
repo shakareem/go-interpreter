@@ -6,8 +6,9 @@ open! Base
 open Ast
 open Angstrom
 open Common
+open Expr
 
-let parse_var_decl_in_func = return ()
+let parse_var_decl_in_func = return () (* TODO *)
 let parse_var_decl_any = parse_var_decl_top_level *> return () <|> parse_var_decl_in_func
 let parse_assign = return () (* TODO *)
 let parse_incr = parse_ident <* string "++" >>| fun id -> Stmt_incr id
@@ -17,7 +18,13 @@ let parse_for = return () (* TODO *)
 let parse_range = return () (* TODO *)
 let parse_break = string "break" *> return Stmt_break
 let parse_continue = string "continue" *> return Stmt_continue
-let parse_return = string "return" *> ws_line *> return () (* заглушка, надо parse_expr *)
+
+let parse_return =
+  string "return" *> ws_line *> parse_expr >>| fun expr -> Stmt_return (Some expr)
+;;
+
+(* TODO: return multiple expressions *)
+
 let parse_chan_send = return () (* TODO *)
 let parse_chan_receive = return () (* TODO *)
 let parse_stmt_call = return () (* TODO *)
@@ -35,7 +42,7 @@ let parse_stmt =
     ; parse_range
     ; parse_break *> return () (* заглушка *)
     ; parse_continue *> return () (* заглушка *)
-    ; parse_return
+    ; parse_return *> return ()
     ; parse_chan_send
     ; parse_chan_receive
     ; parse_stmt_call

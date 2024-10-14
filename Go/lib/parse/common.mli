@@ -8,6 +8,8 @@ open Angstrom
 
 val ws : unit t
 val ws_line : unit t
+val token : ident -> ident t
+val parens : 'a t -> 'a t
 val many_sep : sep:'a t -> parser:'b t -> 'b list t
 
 (** Separator for the statements, [;] or [\n] *)
