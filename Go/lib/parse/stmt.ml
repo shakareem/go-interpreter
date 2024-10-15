@@ -22,8 +22,18 @@ let parse_inits =
   *> many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
 ;;
 
+let parse_idents =
+  string "var" *> ws *> many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident
+;;
+
 (* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state *)
 let parse_var_decl_top_level =
+  let* idents = parse_idents in
+  let* vars_type =
+    ws_line *> parse_type <* ws_line >>| (fun t -> Some t) <|> ws_line *> return None
+  in
+  let* _ = char '=' *> ws in
+  let* inits = parse_inits in
   let build_var_decl_parser idents vars_type inits =
     match vars_type, inits with
     | Some t, _ :: _ ->
@@ -37,16 +47,7 @@ let parse_var_decl_top_level =
       else Decl_with_init (Some Type_int, combine_lists idents inits)
     | None, [] -> Decl_with_init (None, [])
   in
-  let parse_vars_type =
-    ws_line *> parse_type <* ws_line >>| (fun t -> Some t) <|> ws_line *> return None
-  in
-  lift3
-    build_var_decl_parser
-    (string "var"
-     *> ws
-     *> many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident)
-    parse_vars_type
-    (char '=' *> ws *> parse_inits)
+  return (build_var_decl_parser idents vars_type inits)
 ;;
 
 (* let parse_var_decl_in_func = return () *)
@@ -62,18 +63,18 @@ let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr i
 
 (* в ините нужно парсить только parse_var_decl_in_func *)
 let parse_if pstmt pblock =
-  let parse_init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
-  let parse_else =
+  let* _ = string "if" in
+  let* init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
+  let* cond = parse_expr <* ws_line in
+  let* if_body = pblock <* ws_line in
+  let* else_body =
     string "else" *> ws *> pblock >>| (fun block -> Some block) <|> return None
   in
-  string "if"
-  *> ws
-  *> lift4
-       (fun init cond if_body else_body -> Stmt_if (init, cond, if_body, else_body))
-       parse_init
-       (parse_expr <* ws_line)
-       (pblock <* ws_line)
-       parse_else
+  (fun init cond if_body else_body -> return (Stmt_if (init, cond, if_body, else_body)))
+    init
+    cond
+    if_body
+    else_body
 ;;
 
 (* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]
