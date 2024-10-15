@@ -21,7 +21,7 @@ let parse_lvalues =
 
 let parse_rvalues = many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
 
-let parse_var_decl_top_level =
+let parse_long_var_decl =
   let* _ = string "var" *> ws in
   let* lvalues = parse_lvalues in
   let* vars_type =
@@ -43,14 +43,24 @@ let parse_var_decl_top_level =
     | None, [] -> Decl_with_init (None, [])
   in
   match build_var_decl_parser lvalues vars_type rvalues with
-  | Decl_with_init (None, []) -> fail "Var declaration has to have either type or rvalues"
+  | Decl_with_init (None, []) ->
+    fail
+      "Var declaration has to have either type or rvalues and number of lvalues and \
+       rvalues should be the same"
   | result -> return result
 ;;
 
-(* let parse_var_decl_in_func = return () *)
+let parse_short_var_decl =
+  let* lvalues = parse_lvalues in
+  let* _ = ws_line *> string ":=" *> ws in
+  let* rvalues = parse_rvalues in
+  if List.length lvalues != List.length rvalues
+  then fail "Number of lvalues and rvalues should be the same"
+  else return (Decl_with_init (None, combine_lists lvalues rvalues))
+;;
+
 let parse_var_decl_any =
-  parse_var_decl_top_level
-  (* <|> parse_var_decl_in_func *) >>| fun decl -> Stmt_var_decl decl
+  parse_long_var_decl <|> parse_short_var_decl >>| fun decl -> Stmt_var_decl decl
 ;;
 
 (* let parse_assign = return () *)

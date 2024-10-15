@@ -17,7 +17,7 @@ let parse_func_decl =
 ;;
 
 let parse_top_decl =
-  parse_var_decl_top_level
+  parse_long_var_decl
   >>| (fun decl -> Decl_var decl)
   <|> (parse_func_decl >>| fun decl -> Decl_func decl)
 ;;
