@@ -69,15 +69,17 @@ let parse_incr = parse_ident <* ws_line <* string "++" >>| fun id -> Stmt_incr i
 let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 
 (* в ините нужно парсить только parse_var_decl_in_func *)
-let parse_if pstmt pblock =
+let rec parse_if pstmt pblock =
   let* _ = string "if" in
   let* init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
   let* cond = parse_expr <* ws_line in
   let* if_body = pblock <* ws_line in
   let* else_body =
-    string "else" *> ws *> pblock >>| (fun block -> Some block) <|> return None
+    string "else" *> ws *> (parse_if pstmt pblock >>| fun if_stmt -> Some if_stmt)
+    <|> (pblock >>| fun block -> Some (Stmt_block block))
+    <|> return None
   in
-  return (Stmt_if (init, cond, if_body, else_body))
+  return (Stmt_if { init; cond; if_body; else_body })
 ;;
 
 (* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]

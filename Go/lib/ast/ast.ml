@@ -110,19 +110,33 @@ and stmt =
       Invariant: size of the list >= 1 *)
   | Stmt_incr of ident (** An increment of a variable: [a++] *)
   | Stmt_decr of ident (** A decrement of a variable: [a--] *)
-  | Stmt_if of stmt option * expr * block * block option
+  | Stmt_if of
+      { init : stmt option
+      ; cond : expr
+      ; if_body : block
+      ; else_body : stmt option (* block or if statement or None *)
+      }
   (** An if statement such as:
       [if a := 5; a >= 4 {
           do()
       } else {
           do_else()
       }] *)
-  | Stmt_for of stmt option * expr option * stmt option * block
+  | Stmt_for of
+      { init : stmt option
+      ; cond : expr option
+      ; post : stmt option
+      ; body : block
+      }
   (** A for statement such as:
-      [for i := 0; i < n; i++ {
-          do()
-      }] *)
-  | Stmt_range of ident * ident option * expr * block
+      [for i := 0; i < n; i++ { do() }],
+      [for range 1000 { a++ ; println(a) }] *)
+  | Stmt_range of
+      { index : ident
+      ; element : ident option
+      ; array : expr
+      ; body : block
+      }
   (** For with range statement such as:
       [for i, elem := range array {
           check(elem)
