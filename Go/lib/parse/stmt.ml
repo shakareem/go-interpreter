@@ -12,42 +12,39 @@ let rec combine_lists l1 l2 =
   match l1, l2 with
   | [], [] -> []
   | x :: xs, y :: ys -> (x, y) :: combine_lists xs ys
-  | _, _ -> assert false
+  | _, _ -> assert false (* bad, mb [] instead *)
 ;;
 
-let parse_inits =
-  ws_line
-  *> char '='
-  *> ws
-  *> many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
+let parse_lvalues =
+  many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_decl_ident
 ;;
 
-let parse_idents =
-  string "var" *> ws *> many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_ident
-;;
+let parse_rvalues = many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
 
-(* Decl_with_init (None, []) should cause error, will be proccessed at interpretation state *)
 let parse_var_decl_top_level =
-  let* idents = parse_idents in
+  let* _ = string "var" *> ws in
+  let* lvalues = parse_lvalues in
   let* vars_type =
     ws_line *> parse_type <* ws_line >>| (fun t -> Some t) <|> ws_line *> return None
   in
   let* _ = char '=' *> ws in
-  let* inits = parse_inits in
-  let build_var_decl_parser idents vars_type inits =
-    match vars_type, inits with
+  let* rvalues = parse_rvalues in
+  let build_var_decl_parser lvalues vars_type rvalues =
+    match vars_type, rvalues with
     | Some t, _ :: _ ->
-      if List.length idents != List.length inits
+      if List.length lvalues != List.length rvalues
       then Decl_with_init (None, [])
-      else Decl_with_init (Some t, combine_lists idents inits)
-    | Some t, [] -> Decl_no_init (t, idents)
+      else Decl_with_init (Some t, combine_lists lvalues rvalues)
+    | Some t, [] -> Decl_no_init (t, lvalues)
     | None, _ :: _ ->
-      if List.length idents != List.length inits
+      if List.length lvalues != List.length rvalues
       then Decl_with_init (None, [])
-      else Decl_with_init (Some Type_int, combine_lists idents inits)
+      else Decl_with_init (None, combine_lists lvalues rvalues)
     | None, [] -> Decl_with_init (None, [])
   in
-  return (build_var_decl_parser idents vars_type inits)
+  match build_var_decl_parser lvalues vars_type rvalues with
+  | Decl_with_init (None, []) -> fail "Var declaration has to have either type or rvalues"
+  | result -> return result
 ;;
 
 (* let parse_var_decl_in_func = return () *)
@@ -70,11 +67,7 @@ let parse_if pstmt pblock =
   let* else_body =
     string "else" *> ws *> pblock >>| (fun block -> Some block) <|> return None
   in
-  (fun init cond if_body else_body -> return (Stmt_if (init, cond, if_body, else_body)))
-    init
-    cond
-    if_body
-    else_body
+  return (Stmt_if (init, cond, if_body, else_body))
 ;;
 
 (* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]

@@ -36,11 +36,6 @@ let is_digit = function
   | _ -> false
 ;;
 
-let is_char = function
-  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
-  | _ -> false
-;;
-
 let is_space_or_tab = function
   | ' ' | '\t' -> true
   | _ -> false
@@ -74,7 +69,7 @@ let token s = ws_line *> string s <* ws
 let parens p = token "(" *> p <* token ")"
 
 (* at least one newline *)
-let parse_newline = skip_while is_space_or_tab *> char '\n' *> ws
+let parse_newline = ws_line *> char '\n' *> ws
 let parse_stmt_sep = parse_newline <|> ws *> char ';' *> ws
 let parse_const_int = take_while1 is_digit >>| fun num -> Const_int (Int.of_string num)
 
@@ -82,6 +77,7 @@ let parse_const_bool =
   string "true" <|> string "false" >>| fun bl -> Const_bool (Bool.of_string bl)
 ;;
 
+(* mb bug *)
 let parse_const_string =
   let parse_string = take_till (Char.equal '"') >>| fun str -> Const_string str in
   char '"' *> parse_string <* char '"'
@@ -89,17 +85,28 @@ let parse_const_string =
 
 let parse_const = choice [ parse_const_int; parse_const_string; parse_const_bool ]
 
-let parse_ident =
+let parse_decl_ident =
   let is_first_char_valid = function
     | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
+    | _ -> false
+  in
+  let is_valid_char = function
+    | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
     | _ -> false
   in
   let* first_char = peek_char in
   match first_char with
   | Some chr when is_first_char_valid chr ->
-    let* ident = take_while is_char in
+    let* ident = take_while is_valid_char in
     if is_keyword ident then fail "This is a keyword" else return ident
-  | _ -> fail "Invalid identifier name"
+  | _ -> fail "EOF reached"
+;;
+
+let parse_ident =
+  let* ident = parse_decl_ident in
+  match ident with
+  | "_" -> fail "Blank identifier is a write-only value"
+  | _ -> return ident
 ;;
 
 (* TODO: add arrays and functions *)

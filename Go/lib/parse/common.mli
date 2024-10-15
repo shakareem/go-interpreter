@@ -12,17 +12,22 @@ val ws : unit t
 
 val ws_line : unit t
 
-val token : ident -> ident t
+val token : string -> string t
 
 val parens : 'a t -> 'a t
 
 val many_sep : sep:'a t -> parser:'b t -> 'b list t
 
-(** Separator for the statements, [;] or [\n] *)
 val parse_stmt_sep : unit t
+(** Parses separator for the statements, [;] or [\n], returns nothing *)
 
 val parse_const: const t
 
-val parse_ident: string t
+val parse_decl_ident: ident t
+(** Parses identifiers that can be used as lvalues in variable declarations 
+and as function name (includes blank identifier [_]) *)
+
+val parse_ident: ident t
+(** Parses all identifiers except for blank identifier [_] *)
 
 val parse_type: type' t
