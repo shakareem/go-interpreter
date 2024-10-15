@@ -6,7 +6,7 @@ open! Base
 open Ast
 open Angstrom
 
-val parse_stmt : stmt t
+val parse_stmt : block t -> stmt t
 
 val parse_block: block t
 

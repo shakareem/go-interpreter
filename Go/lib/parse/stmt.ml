@@ -61,12 +61,10 @@ let parse_incr = parse_ident <* ws_line <* string "++" >>| fun id -> Stmt_incr i
 let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 
 (* в ините нужно парсить только parse_var_decl_in_func *)
-let parse_if =
-  let parse_init =
-    parse_stmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None
-  in
+let parse_if pstmt pblock =
+  let parse_init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
   let parse_else =
-    string "else" *> ws *> parse_block >>| (fun block -> Some block) <|> return None
+    string "else" *> ws *> pblock >>| (fun block -> Some block) <|> return None
   in
   string "if"
   *> ws
@@ -74,7 +72,7 @@ let parse_if =
        (fun init cond if_body else_body -> Stmt_if (init, cond, if_body, else_body))
        parse_init
        (parse_expr <* ws_line)
-       (parse_block <* ws_line)
+       (pblock <* ws_line)
        parse_else
 ;;
 
@@ -95,28 +93,30 @@ let parse_return =
    let parse_defer = string "defer" *> ws_line *> return ()
    let parse_go = string "go" *> ws_line *> return () *)
 
-let rec parse_stmt =
-  choice
-    [ parse_var_decl_any
-    ; parse_incr
-    ; parse_decr
-    ; parse_if
-    ; parse_break
-    ; parse_continue
-    ; parse_return
-      (*  ; parse_assign
-          ; parse_for
-          ; parse_range
-          ; parse_chan_send
-          ; parse_chan_receive
-          ; parse_stmt_call
-          ; parse_defer
-          ; parse_go *)
-    ]
-    ~failure_msg:"Incorrect statement"
+let parse_stmt pblock =
+  fix (fun pstmt ->
+    choice
+      [ parse_var_decl_any
+      ; parse_incr
+      ; parse_decr
+      ; parse_if pstmt pblock
+      ; parse_break
+      ; parse_continue
+      ; parse_return
+        (*  ; parse_assign
+            ; parse_for
+            ; parse_range
+            ; parse_chan_send
+            ; parse_chan_receive
+            ; parse_stmt_call
+            ; parse_defer
+            ; parse_go *)
+      ]
+      ~failure_msg:"Incorrect statement")
 ;;
 
 let parse_block : block t =
-  let parse_stmts = many_sep ~sep:parse_stmt_sep ~parser:parse_stmt in
-  char '{' *> ws *> parse_stmts <* ws <* char '}'
+  fix (fun pblock ->
+    let parse_stmts = many_sep ~sep:parse_stmt_sep ~parser:(parse_stmt pblock) in
+    char '{' *> ws *> parse_stmts <* ws <* char '}')
 ;;
