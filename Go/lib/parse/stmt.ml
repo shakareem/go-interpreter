@@ -68,7 +68,6 @@ let parse_short_var_decl =
 let parse_incr = parse_ident <* ws_line <* string "++" >>| fun id -> Stmt_incr id
 let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 
-(* в ините нужно парсить только parse_var_decl_in_func *)
 let rec parse_if pstmt pblock =
   let* _ = string "if" in
   let* init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
@@ -126,3 +125,5 @@ let parse_block : block t =
   fix (fun pblock ->
     char '{' *> ws *> sep_by parse_stmt_sep (parse_stmt pblock) <* ws <* char '}')
 ;;
+
+(**************************************** Tests ****************************************)

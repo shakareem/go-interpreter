@@ -73,7 +73,7 @@ let parse_const_string =
   char '"' *> parse_string <* char '"'
 ;;
 
-let parse_const_nil = string "nil" >>| fun _ -> Const_nil
+let parse_const_nil = string "nil" *> return Const_nil
 
 let parse_const =
   choice [ parse_const_int; parse_const_string; parse_const_bool; parse_const_nil ]
@@ -104,4 +104,185 @@ let parse_type =
     ; string "bool" *> return Type_bool
     ]
     ~failure_msg:"Invalid type"
+;;
+
+(**************************************** Tests ****************************************)
+
+let%expect_test "const in" =
+  pp pp_const parse_const {|256|};
+  [%expect {| (Const_int 256) |}]
+;;
+
+let%expect_test "zero" =
+  pp pp_const parse_const {|0|};
+  [%expect {| (Const_int 0) |}]
+;;
+
+let%expect_test "not digit in int" =
+  pp pp_const parse_const {|123,321|};
+  [%expect {| : end_of_input |}]
+;;
+
+let%expect_test "very big int" =
+  pp pp_const parse_const {|9999999999999999999999999999999999999999|};
+  [%expect.unreachable]
+[@@expect.uncaught_exn
+  {|
+  (* CR expect_test_collector: This test expectation appears to contain a backtrace.
+     This is strongly discouraged as backtraces are fragile.
+     Please change this test to not include a backtrace. *)
+
+  (Failure "Int.of_string: \"9999999999999999999999999999999999999999\"")
+  Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
+  Called from Parse__Common.parse_const_int.(fun) in file "lib/parse/common.ml", line 64, characters 68-87
+  Called from Angstrom__Parser.Monad.(>>|).(fun).succ' in file "lib/parser.ml", line 64, characters 61-66
+  Called from Angstrom__Parser.parse_bigstring in file "lib/parser.ml", line 43, characters 52-93
+  Called from Parse__Common.pp in file "lib/parse/common.ml", line 10, characters 8-70
+  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 127, characters 2-70
+  Called from Expect_test_collector.Make.Instance.exec in file "collector/expect_test_collector.ml", line 244, characters 12-19 |}]
+;;
+
+let%expect_test "const bool" =
+  pp pp_const parse_const {|true|};
+  [%expect {| (Const_bool true) |}]
+;;
+
+let%expect_test "const false" =
+  pp pp_const parse_const {|false|};
+  [%expect {| (Const_bool false) |}]
+;;
+
+let%expect_test "const string" =
+  pp pp_const parse_const {|"my_string"|};
+  [%expect {| (Const_string "my_string") |}]
+;;
+
+let%expect_test "string with '\n'" =
+  pp pp_const parse_const {|"Hello\n"|};
+  [%expect {| (Const_string "Hello\\n") |}]
+;;
+
+let%expect_test "const nil" =
+  pp pp_const parse_const_nil {|nil|};
+  [%expect {| Const_nil |}]
+;;
+
+let%expect_test "ident with only letters" =
+  pp pp_ident parse_ident {|myIdent|};
+  [%expect {| "myIdent" |}]
+;;
+
+let%expect_test "ident with uderscore" =
+  pp pp_ident parse_ident {|my_ident|};
+  [%expect {| "my_ident" |}]
+;;
+
+let%expect_test "blank ident" =
+  pp pp_ident parse_ident {|_|};
+  [%expect {| "_" |}]
+;;
+
+let%expect_test "ident with numbers" =
+  pp pp_ident parse_ident {|a1b2c3|};
+  [%expect {| "a1b2c3" |}]
+;;
+
+let%expect_test "ident with first char that is digit" =
+  pp pp_ident parse_ident {|1abc|};
+  [%expect {| : EOF reached |}]
+;;
+
+let%expect_test "incorrect type" =
+  pp pp_type' parse_type {|blablablablabla|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type int" =
+  pp pp_type' parse_type {|int|};
+  [%expect {| Type_int |}]
+;;
+
+let%expect_test "type bool" =
+  pp pp_type' parse_type {|bool|};
+  [%expect {| Type_bool |}]
+;;
+
+let%expect_test "type string" =
+  pp pp_type' parse_type {|string|};
+  [%expect {| Type_string |}]
+;;
+
+let%expect_test "type simple array" =
+  pp pp_type' parse_type {|[3]int|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type array of arrays" =
+  pp pp_type' parse_type {|[4][0]string|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type array of functions" =
+  pp pp_type' parse_type {|[4]func()|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type simple func" =
+  pp pp_type' parse_type {|func()|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type simple func with brackets" =
+  pp pp_type' parse_type {|func()()|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type simple func with brackets and ws" =
+  pp pp_type' parse_type {|func()  /* some comment */  ()|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with one arg and without returns" =
+  pp pp_type' parse_type {|func(int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with one arg and without returns" =
+  pp pp_type' parse_type {|func(int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with mult args and without returns" =
+  pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with mult args and without returns" =
+  pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with one return" =
+  pp pp_type' parse_type {|func() int|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with one return in brackets" =
+  pp pp_type' parse_type {|func() (int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func with multiple returns" =
+  pp pp_type' parse_type {|func() (int, string)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func that gets func and returns func" =
+  pp pp_type' parse_type {|func(func(int) string) func([4][5]int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type func that returns func that returns func..." =
+  pp pp_type' parse_type {|func() func() func() func() func() func()|};
+  [%expect {| : Invalid type |}]
 ;;

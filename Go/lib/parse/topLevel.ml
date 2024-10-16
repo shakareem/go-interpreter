@@ -23,3 +23,5 @@ let parse_top_decl =
 ;;
 
 let parse_file : file t = sep_by parse_stmt_sep parse_top_decl
+
+(**************************************** Tests ****************************************)
