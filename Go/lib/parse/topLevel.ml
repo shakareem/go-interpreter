@@ -9,11 +9,11 @@ open Common
 open Expr
 open Stmt
 
-let parse_func_decl =
-  lift2
-    (fun name args_returns_and_body -> name, args_returns_and_body)
-    (string "func" *> ws *> parse_ident <* ws_line)
-    (parse_anon_func parse_block)
+let parse_func_decl : func_decl t =
+  let* _ = string "func" *> ws in
+  let* func_name = parse_ident <* ws_line in
+  let* args_returns_and_body = parse_anon_func parse_block in
+  return (func_name, args_returns_and_body)
 ;;
 
 let parse_top_decl =
@@ -22,4 +22,4 @@ let parse_top_decl =
   <|> (parse_func_decl >>| fun decl -> Decl_func decl)
 ;;
 
-let parse_file : file t = many_sep ~sep:parse_stmt_sep ~parser:parse_top_decl
+let parse_file : file t = sep_by parse_stmt_sep parse_top_decl

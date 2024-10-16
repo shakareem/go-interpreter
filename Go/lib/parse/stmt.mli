@@ -10,4 +10,4 @@ val parse_stmt : block t -> stmt t
 
 val parse_block: block t
 
-val parse_long_var_decl: var_decl t
+val parse_long_var_decl: long_var_decl t

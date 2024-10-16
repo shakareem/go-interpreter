@@ -104,7 +104,8 @@ and func_call = expr * expr list [@@deriving show { with_path = false }]
 
 (** Statement, a syntactic unit of imperative programming *)
 and stmt =
-  | Stmt_var_decl of var_decl (** See var_decl type *)
+  | Stmt_long_var_decl of long_var_decl (** See long_var_decl type *)
+  | Stmt_short_var_decl of short_var_decl (** See short_var_decl type *)
   | Stmt_assign of (ident * expr) list
   (** Assignment to a variable such as [a = 3], [a, b = 4, 5].
       Invariant: size of the list >= 1 *)
@@ -156,19 +157,32 @@ and stmt =
 (** Block of statements in curly braces *)
 and block = stmt list [@@deriving show { with_path = false }]
 
-(** Variable declarations *)
-and var_decl =
-  | Decl_no_init of type' * ident list
+(** Variable declarations with [var] keyword *)
+and long_var_decl =
+  | Long_decl_no_init of type' * ident list
   (** Declarations without initialization such as [var my_int1, my_int2 int].
       Invariant: size of the list is >= 1 *)
-  | Decl_with_init of type' option * (ident * expr) list
-  (** Declarations with initialization such as:
+  | Long_decl_mult_init of type' option * (ident * expr) list
+  (** Declarations with initializer for each identifier such as:
       [var my_func func() = func() {}],
       [var a, b int = 1, 2],
-      [var a, b = 1 + 2, "3"],
-      [flag, count := true, 0].
+      [var a, b = 1 + 2, "3"].
+      Invariant: size of the list is >= 1 *)
+  | Long_decl_one_init of type' option * ident list * expr
+  (** Declarations with one initializer that is a function call
+      for multiple identifiers such as [var a, b, c = get_three()].
       Invariant: size of the list is >= 1 *)
 [@@deriving show { with_path = false }]
+
+(** Short variable declarations withous [var] keyword such as [flag, count := true, 0], [a, b := get_two()]. *)
+and short_var_decl =
+  | Short_decl_mult_init of (ident * expr) list
+  (** Declarations with initializer for each identifier such as [flag, count := true, 0].
+      Invariant: size of the list is >= 1 *)
+  | Short_decl_one_init of ident list * expr
+  (** Declarations with one initializer that is a function call
+      for multiple identifiers such as [a, b := get_two()].
+      Invariant: size of the list is >= 1 *)
 
 (** Function declarations such as:
     [func sum_and_diff(a, b int) (sum, diff int) {
@@ -180,7 +194,7 @@ type func_decl = ident * anon_func [@@deriving show { with_path = false }]
 
 (** Top-level declarations *)
 type top_decl =
-  | Decl_var of var_decl
+  | Decl_var of long_var_decl
   | Decl_func of func_decl
 [@@deriving show { with_path = false }]
 

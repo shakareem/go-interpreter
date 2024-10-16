@@ -41,16 +41,6 @@ let is_space_or_tab = function
   | _ -> false
 ;;
 
-let many_sep ~sep ~parser =
-  sep_by sep parser
-  >>| fun list ->
-  let rec helper = function
-    | hd :: tl -> hd :: helper tl
-    | [] -> []
-  in
-  helper list
-;;
-
 let skip_whitespace = skip_while Char.is_whitespace
 let skip_line_whitespace = skip_while is_space_or_tab
 
@@ -85,7 +75,7 @@ let parse_const_string =
 
 let parse_const = choice [ parse_const_int; parse_const_string; parse_const_bool ]
 
-let parse_decl_ident =
+let parse_ident =
   let is_first_char_valid = function
     | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
     | _ -> false
@@ -100,13 +90,6 @@ let parse_decl_ident =
     let* ident = take_while is_valid_char in
     if is_keyword ident then fail "This is a keyword" else return ident
   | _ -> fail "EOF reached"
-;;
-
-let parse_ident =
-  let* ident = parse_decl_ident in
-  match ident with
-  | "_" -> fail "Blank identifier is a write-only value"
-  | _ -> return ident
 ;;
 
 (* TODO: add arrays and functions *)

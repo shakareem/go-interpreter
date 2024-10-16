@@ -53,22 +53,27 @@ let peand = token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1,
 let peor = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
 
 let parse_simple_expr =
-  parse_const
-  >>| (fun const -> Expr_const const)
-  <|> (parse_ident >>| fun id -> Expr_ident id)
+  let parse_ident_not_blank =
+    let* ident = parse_ident in
+    match ident with
+    | "_" -> fail "Blank identifier is a write-only value"
+    | _ -> return ident
+  in
+  parse_ident_not_blank
+  >>| (fun id -> Expr_ident id)
+  <|> (parse_const >>| fun const -> Expr_const const)
 ;;
 
 (* нужно переиспользовать в стейтментах *)
 let parse_func_call pexpr =
-  lift2
-    (fun id ls -> Expr_call (Expr_ident id, ls))
-    (ws *> parse_ident <* ws_line)
-    (parens (many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:pexpr))
+  let* func_name = ws *> parse_ident <* ws_line in
+  let* args = parens (sep_by (ws_line *> char ',' *> ws) pexpr) in
+  return (Expr_call (Expr_ident func_name, args))
 ;;
 
 let parse_expr =
   fix (fun expr ->
-    let arg = choice [ parse_func_call expr; parse_simple_expr ] in
+    let arg = parse_func_call expr <|> parse_simple_expr in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
@@ -81,10 +86,9 @@ let parse_expr =
 (* only (a, b, c int) args supported, TODO: (a string, b int) *)
 let parse_func_args =
   parens
-    (lift2
-       (fun args t -> List.map ~f:(fun arg -> arg, t) args)
-       (many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_ident <* ws_line)
-       parse_type)
+    (let* idents = sep_by (ws_line *> char ',' *> ws) parse_ident in
+     let* t = ws_line *> parse_type in
+     return (List.map ~f:(fun id -> id, t) idents))
 ;;
 
 (* TODO: (a int, b string) *)
@@ -92,21 +96,18 @@ let parse_func_return_values =
   parse_type >>| (fun t -> Only_types [ t ]) <|> return (Only_types [])
 ;;
 
-let construct_anon_func args returns body =
-  let returns : return_values option =
-    match returns with
-    | Only_types (_ :: _) | Ident_and_types _ -> Some returns
-    | Only_types [] -> None
+let parse_anon_func pblock =
+  let* args = parse_func_args <* ws_line in
+  let* returns =
+    parse_func_return_values
+    >>| (fun returns ->
+          match returns with
+          | Only_types (_ :: _) | Ident_and_types _ -> Some returns
+          | Only_types [] -> None)
+    <* ws_line
   in
-  { args; returns; body }
-;;
-
-let parse_anon_func parse_block =
-  lift3
-    construct_anon_func
-    (parse_func_args <* ws_line)
-    (parse_func_return_values <* ws_line)
-    parse_block
+  let* body = pblock in
+  return { args; returns; body }
 ;;
 
 let parse_expr_anon_func parse_block = string "func" *> ws *> parse_anon_func parse_block

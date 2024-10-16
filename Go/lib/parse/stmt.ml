@@ -15,11 +15,8 @@ let rec combine_lists l1 l2 =
   | _, _ -> assert false (* bad, mb [] instead *)
 ;;
 
-let parse_lvalues =
-  many_sep ~sep:(ws_line *> char ',' *> ws_line) ~parser:parse_decl_ident
-;;
-
-let parse_rvalues = many_sep ~sep:(ws_line *> char ',' *> ws) ~parser:parse_expr
+let parse_lvalues = sep_by1 (ws_line *> char ',' *> ws_line) parse_ident
+let parse_rvalues = sep_by (ws_line *> char ',' *> ws) parse_expr
 
 let parse_long_var_decl =
   let* _ = string "var" *> ws in
@@ -29,25 +26,23 @@ let parse_long_var_decl =
   in
   let* _ = char '=' *> ws in
   let* rvalues = parse_rvalues in
-  let build_var_decl_parser lvalues vars_type rvalues =
-    match vars_type, rvalues with
-    | Some t, _ :: _ ->
-      if List.length lvalues != List.length rvalues
-      then Decl_with_init (None, [])
-      else Decl_with_init (Some t, combine_lists lvalues rvalues)
-    | Some t, [] -> Decl_no_init (t, lvalues)
-    | None, _ :: _ ->
-      if List.length lvalues != List.length rvalues
-      then Decl_with_init (None, [])
-      else Decl_with_init (None, combine_lists lvalues rvalues)
-    | None, [] -> Decl_with_init (None, [])
-  in
-  match build_var_decl_parser lvalues vars_type rvalues with
-  | Decl_with_init (None, []) ->
-    fail
-      "Var declaration has to have either type or rvalues and number of lvalues and \
-       rvalues should be the same"
-  | result -> return result
+  match rvalues, List.length lvalues = List.length rvalues with
+  | _ :: _, true ->
+    return (Long_decl_mult_init (vars_type, combine_lists lvalues rvalues))
+  | _ :: _, false ->
+    if List.length rvalues = 1
+    then (
+      match List.nth rvalues 0 with
+      | Some expr -> return (Long_decl_one_init (vars_type, lvalues, expr))
+      | None -> assert false)
+    else
+      fail
+        "Number of lvalues and rvalues in variable declarations should be the same or \
+         rvalue should be a function that returns multiple values"
+  | [], _ ->
+    (match vars_type with
+     | Some t -> return (Long_decl_no_init (t, lvalues))
+     | None -> fail "Long variable declaration without initializers should have type")
 ;;
 
 let parse_short_var_decl =
@@ -55,12 +50,17 @@ let parse_short_var_decl =
   let* _ = ws_line *> string ":=" *> ws in
   let* rvalues = parse_rvalues in
   if List.length lvalues != List.length rvalues
-  then fail "Number of lvalues and rvalues should be the same"
-  else return (Decl_with_init (None, combine_lists lvalues rvalues))
-;;
-
-let parse_var_decl_any =
-  parse_long_var_decl <|> parse_short_var_decl >>| fun decl -> Stmt_var_decl decl
+  then
+    if List.length rvalues = 1
+    then (
+      match List.nth rvalues 0 with
+      | Some expr -> return (Stmt_short_var_decl (Short_decl_one_init (lvalues, expr)))
+      | None -> assert false)
+    else
+      fail
+        "Number of lvalues and rvalues should be the same or rvalue should be a function \
+         that returns multiple values"
+  else return (Stmt_short_var_decl (Short_decl_mult_init (combine_lists lvalues rvalues)))
 ;;
 
 (* let parse_assign = return () *)
@@ -102,7 +102,8 @@ let parse_return =
 let parse_stmt pblock =
   fix (fun pstmt ->
     choice
-      [ parse_var_decl_any
+      [ (parse_long_var_decl >>| fun decl -> Stmt_long_var_decl decl)
+      ; parse_short_var_decl
       ; parse_incr
       ; parse_decr
       ; parse_if pstmt pblock
@@ -123,6 +124,5 @@ let parse_stmt pblock =
 
 let parse_block : block t =
   fix (fun pblock ->
-    let parse_stmts = many_sep ~sep:parse_stmt_sep ~parser:(parse_stmt pblock) in
-    char '{' *> ws *> parse_stmts <* ws <* char '}')
+    char '{' *> ws *> sep_by parse_stmt_sep (parse_stmt pblock) <* ws <* char '}')
 ;;

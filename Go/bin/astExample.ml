@@ -21,7 +21,7 @@ let () =
                 cond = Expr_bin_oper (Bin_equal, Expr_ident "n", Expr_const (Const_int 0))
               ; (* "if" body *)
                 if_body = [ Stmt_return (Some (Expr_const (Const_int 1))) ]
-              ; (* "else" branch *)
+              ; (* "else" body *)
                 else_body =
                   Some
                     (Stmt_block
