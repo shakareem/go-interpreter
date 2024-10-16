@@ -21,6 +21,7 @@ type const =
   | Const_int of int (** Integer constants such as [0], [123] *)
   | Const_string of string (** Constant strings such as ["my_string"] *)
   | Const_bool of bool (** Boolean constants: [true] and [false] *)
+  | Const_nil (** A value of an unitialized channel or function: [nil] *)
 [@@deriving show { with_path = false }]
 
 (** identificator for a variable or a function *)
@@ -61,7 +62,6 @@ type return_values =
 
 (** Expressions that can be assigned to a variable or put in "if" statement *)
 type expr =
-  | Expr_nil (** A value of an unitialized channel or function: [nil] *)
   | Expr_const of const (** Constants such as [5], ["hi"], [false] *)
   | Expr_array of type' * expr list
   (** Arrays such as [[3]int{3, get_four()}]. Empty list means that there is

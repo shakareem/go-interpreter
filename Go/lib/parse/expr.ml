@@ -71,18 +71,6 @@ let parse_func_call pexpr =
   return (Expr_call (Expr_ident func_name, args))
 ;;
 
-let parse_expr =
-  fix (fun expr ->
-    let arg = parse_func_call expr <|> parse_simple_expr in
-    let arg = penot arg <|> arg in
-    let arg = peusb arg <|> arg in
-    let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
-    let arg = chainl1 arg (pesum <|> pesub) in
-    let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in
-    let arg = fix (fun _ -> arg) <|> arg in
-    arg)
-;;
-
 (* only (a, b, c int) args supported, TODO: (a string, b int) *)
 let parse_func_args =
   parens
@@ -96,7 +84,7 @@ let parse_func_return_values =
   parse_type >>| (fun t -> Only_types [ t ]) <|> return (Only_types [])
 ;;
 
-let parse_anon_func pblock =
+let parse_func_args_returns_and_body pblock =
   let* args = parse_func_args <* ws_line in
   let* returns =
     parse_func_return_values
@@ -110,7 +98,24 @@ let parse_anon_func pblock =
   return { args; returns; body }
 ;;
 
-let parse_expr_anon_func parse_block = string "func" *> ws *> parse_anon_func parse_block
+let parse_anon_func pblock =
+  string "func" *> ws *> parse_func_args_returns_and_body pblock
+  >>| fun anon_func -> Expr_anon_func anon_func
+;;
+
+let parse_expr =
+  fix (fun pexpr ->
+    let arg =
+      parse_func_call pexpr <|> parse_simple_expr (* <|> parse_anon_func pblock *)
+    in
+    let arg = penot arg <|> arg in
+    let arg = peusb arg <|> arg in
+    let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
+    let arg = chainl1 arg (pesum <|> pesub) in
+    let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in
+    let arg = fix (fun _ -> arg) <|> arg in
+    arg)
+;;
 
 (******************************* Tests ********************************)
 

@@ -73,7 +73,11 @@ let parse_const_string =
   char '"' *> parse_string <* char '"'
 ;;
 
-let parse_const = choice [ parse_const_int; parse_const_string; parse_const_bool ]
+let parse_const_nil = string "nil" >>| fun _ -> Const_nil
+
+let parse_const =
+  choice [ parse_const_int; parse_const_string; parse_const_bool; parse_const_nil ]
+;;
 
 let parse_ident =
   let is_first_char_valid = function

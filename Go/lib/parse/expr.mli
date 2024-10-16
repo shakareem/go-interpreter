@@ -8,4 +8,4 @@ open Angstrom
 
 val parse_expr : expr t
 
-val parse_anon_func : block t -> anon_func t
+val parse_func_args_returns_and_body : block t -> anon_func t
