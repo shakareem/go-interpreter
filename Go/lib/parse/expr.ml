@@ -53,12 +53,6 @@ let peand = token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1,
 let peor = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
 
 let parse_simple_expr =
-  let parse_ident_not_blank =
-    let* ident = parse_ident in
-    match ident with
-    | "_" -> fail "Blank identifier is a write-only value"
-    | _ -> return ident
-  in
   parse_ident_not_blank
   >>| (fun id -> Expr_ident id)
   <|> (parse_const >>| fun const -> Expr_const const)
@@ -118,6 +112,67 @@ let parse_expr =
 ;;
 
 (**************************************** Tests ****************************************)
+
+let%expect_test "expr const int" =
+  pp pp_expr parse_expr {|123|};
+  [%expect {|
+    (Expr_const (Const_int 123))|}]
+;;
+
+let%expect_test "expr const string" =
+  pp pp_expr parse_expr {|"My_string123"|};
+  [%expect {|
+    (Expr_const (Const_string "My_string123"))|}]
+;;
+
+let%expect_test "expr ident true" =
+  pp pp_expr parse_expr {|true|};
+  [%expect {|
+    (Expr_ident "true")|}]
+;;
+
+let%expect_test "expr ident false" =
+  pp pp_expr parse_expr {|false|};
+  [%expect {|
+    (Expr_ident "false")|}]
+;;
+
+let%expect_test "expr ident nil" =
+  pp pp_expr parse_expr {|nil|};
+  [%expect {|
+    (Expr_ident "nil")|}]
+;;
+
+let%expect_test "expr ident" =
+  pp pp_expr parse_expr {|abcdefg__|};
+  [%expect {|
+    (Expr_ident "abcdefg__")|}]
+;;
+
+(* bug *)
+let%expect_test "expr ident in braces" =
+  pp pp_expr parse_expr {|(abc))|};
+  [%expect {|
+    : char '"'|}]
+;;
+
+(* bug *)
+let%expect_test "expr logical operations" =
+  pp pp_expr parse_expr {|!a && (b || c)|};
+  [%expect {|
+    : end_of_input|}]
+;;
+
+let%expect_test "expr bin mult and sum" =
+  pp pp_expr parse_expr {|-5 * _r + 8|};
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_sum,
+       (Expr_bin_oper (Bin_multiply,
+          (Expr_un_oper (Unary_minus, (Expr_const (Const_int 5)))),
+          (Expr_ident "_r"))),
+       (Expr_const (Const_int 8))))|}]
+;;
 
 let%expect_test "expr_call test" =
   pp pp_expr parse_expr "fac(4 + fac(4 + 4))";

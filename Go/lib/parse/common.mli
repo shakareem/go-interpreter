@@ -25,4 +25,6 @@ val parse_ident: ident t
 (** Parses identifiers that can be used as lvalues in variable declarations 
 and as function name (includes blank identifier [_]) *)
 
+val parse_ident_not_blank: ident t (** Parses identifiers that are not blank ([_]) *)
+
 val parse_type: type' t

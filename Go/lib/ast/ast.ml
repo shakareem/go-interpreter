@@ -20,8 +20,6 @@ type type' =
 type const =
   | Const_int of int (** Integer constants such as [0], [123] *)
   | Const_string of string (** Constant strings such as ["my_string"] *)
-  | Const_bool of bool (** Boolean constants: [true] and [false] *)
-  | Const_nil (** A value of an unitialized channel or function: [nil] *)
 [@@deriving show { with_path = false }]
 
 (** identificator for a variable or a function *)
@@ -144,8 +142,9 @@ and stmt =
       }] *)
   | Stmt_break (** Break statement: [break] *)
   | Stmt_continue (** Continue statement: [continue] *)
-  | Stmt_return of expr option
-  (** Return statement such as [return some_expr] or [return] *)
+  | Stmt_return of expr list
+  (** Return statement such as
+      [return], [return some_expr], [return expr1, expr2] *)
   | Stmt_block of block (** See block type *)
   | Stmt_chan_send of ident * expr (** Channel send operation [c <- true] *)
   | Stmt_chan_recieve of ident * expr (** Channel recieve operation [z := <-c] *)
@@ -174,7 +173,8 @@ and long_var_decl =
       Invariant: size of the list is >= 1 *)
 [@@deriving show { with_path = false }]
 
-(** Short variable declarations withous [var] keyword such as [flag, count := true, 0], [a, b := get_two()]. *)
+(** Short variable declarations withous [var] keyword
+    such as [flag, count := true, 0], [a, b := get_two()]. *)
 and short_var_decl =
   | Short_decl_mult_init of (ident * expr) list
   (** Declarations with initializer for each identifier such as [flag, count := true, 0].

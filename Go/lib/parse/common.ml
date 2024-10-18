@@ -31,53 +31,38 @@ let is_keyword = function
   | _ -> false
 ;;
 
-let is_digit = function
-  | '0' .. '9' -> true
-  | _ -> false
+let skip_whitespace = skip_many1 (satisfy Char.is_whitespace)
+
+let skip_line_whitespace =
+  skip_many1
+    (satisfy (fun c ->
+       match c with
+       | ' ' | '\t' -> true
+       | _ -> false))
 ;;
 
-let is_space_or_tab = function
-  | ' ' | '\t' -> true
-  | _ -> false
-;;
-
-let skip_whitespace = skip_while Char.is_whitespace
-let skip_line_whitespace = skip_while is_space_or_tab
-
-let parse_line_comment =
-  string "//" *> many_till any_char (char '\n') *> char '\n' *> return ()
-;;
-
-let parse_block_comment =
-  string "/*" *> many_till any_char (string "*/") *> string "*/" *> return ()
-;;
-
+let parse_line_comment = string "//" *> many_till any_char (char '\n') *> return ()
+let parse_block_comment = string "/*" *> many_till any_char (string "*/") *> return ()
 let parse_comment = parse_line_comment <|> parse_block_comment
-let ws = many (skip_whitespace *> parse_comment) *> skip_whitespace
-let ws_line = many (skip_line_whitespace *> parse_block_comment) *> skip_line_whitespace
+let ws = skip_many (parse_comment <|> skip_whitespace)
+let ws_line = skip_many (parse_block_comment <|> skip_line_whitespace)
 let token s = ws_line *> string s <* ws
 let parens p = token "(" *> p <* token ")"
 
 (* at least one newline *)
 let parse_newline = ws_line *> char '\n' *> ws
 let parse_stmt_sep = parse_newline <|> ws *> char ';' *> ws
-let parse_const_int = take_while1 is_digit >>| fun num -> Const_int (Int.of_string num)
 
-let parse_const_bool =
-  string "true" <|> string "false" >>| fun bl -> Const_bool (Bool.of_string bl)
+let parse_const_int =
+  take_while1 Char.is_digit >>| fun num -> Const_int (Int.of_string num)
 ;;
 
-(* mb bug *)
 let parse_const_string =
   let parse_string = take_till (Char.equal '"') >>| fun str -> Const_string str in
   char '"' *> parse_string <* char '"'
 ;;
 
-let parse_const_nil = string "nil" *> return Const_nil
-
-let parse_const =
-  choice [ parse_const_int; parse_const_string; parse_const_bool; parse_const_nil ]
-;;
+let parse_const = parse_const_int <|> parse_const_string
 
 let parse_ident =
   let is_first_char_valid = function
@@ -93,7 +78,14 @@ let parse_ident =
   | Some chr when is_first_char_valid chr ->
     let* ident = take_while is_valid_char in
     if is_keyword ident then fail "This is a keyword" else return ident
-  | _ -> fail "EOF reached"
+  | _ -> fail "Invalid ident"
+;;
+
+let parse_ident_not_blank =
+  let* ident = parse_ident in
+  match ident with
+  | "_" -> fail "Blank identifier is a write-only value"
+  | _ -> return ident
 ;;
 
 (* TODO: add arrays and functions *)
@@ -108,7 +100,7 @@ let parse_type =
 
 (**************************************** Tests ****************************************)
 
-let%expect_test "const in" =
+let%expect_test "const int" =
   pp pp_const parse_const {|256|};
   [%expect {| (Const_int 256) |}]
 ;;
@@ -123,6 +115,7 @@ let%expect_test "not digit in int" =
   [%expect {| : end_of_input |}]
 ;;
 
+(* bug *)
 let%expect_test "very big int" =
   pp pp_const parse_const {|9999999999999999999999999999999999999999|};
   [%expect.unreachable]
@@ -134,22 +127,12 @@ let%expect_test "very big int" =
 
   (Failure "Int.of_string: \"9999999999999999999999999999999999999999\"")
   Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
-  Called from Parse__Common.parse_const_int.(fun) in file "lib/parse/common.ml", line 64, characters 68-87
+  Called from Parse__Common.parse_const_int.(fun) in file "lib/parse/common.ml", line 57, characters 53-72
   Called from Angstrom__Parser.Monad.(>>|).(fun).succ' in file "lib/parser.ml", line 64, characters 61-66
   Called from Angstrom__Parser.parse_bigstring in file "lib/parser.ml", line 43, characters 52-93
   Called from Parse__Common.pp in file "lib/parse/common.ml", line 10, characters 8-70
-  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 127, characters 2-70
+  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 120, characters 2-70
   Called from Expect_test_collector.Make.Instance.exec in file "collector/expect_test_collector.ml", line 244, characters 12-19 |}]
-;;
-
-let%expect_test "const bool" =
-  pp pp_const parse_const {|true|};
-  [%expect {| (Const_bool true) |}]
-;;
-
-let%expect_test "const false" =
-  pp pp_const parse_const {|false|};
-  [%expect {| (Const_bool false) |}]
 ;;
 
 let%expect_test "const string" =
@@ -160,11 +143,6 @@ let%expect_test "const string" =
 let%expect_test "string with '\n'" =
   pp pp_const parse_const {|"Hello\n"|};
   [%expect {| (Const_string "Hello\\n") |}]
-;;
-
-let%expect_test "const nil" =
-  pp pp_const parse_const_nil {|nil|};
-  [%expect {| Const_nil |}]
 ;;
 
 let%expect_test "ident with only letters" =
@@ -189,7 +167,17 @@ let%expect_test "ident with numbers" =
 
 let%expect_test "ident with first char that is digit" =
   pp pp_ident parse_ident {|1abc|};
-  [%expect {| : EOF reached |}]
+  [%expect {| : Invalid ident |}]
+;;
+
+let%expect_test "not blank ident" =
+  pp pp_ident parse_ident_not_blank {|abcdefg|};
+  [%expect {| "abcdefg" |}]
+;;
+
+let%expect_test "not blank ident with blank input" =
+  pp pp_ident parse_ident_not_blank {|_|};
+  [%expect {| : Blank identifier is a write-only value |}]
 ;;
 
 let%expect_test "incorrect type" =
@@ -212,76 +200,73 @@ let%expect_test "type string" =
   [%expect {| Type_string |}]
 ;;
 
+(* bug *)
 let%expect_test "type simple array" =
   pp pp_type' parse_type {|[3]int|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type array of arrays" =
   pp pp_type' parse_type {|[4][0]string|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type array of functions" =
   pp pp_type' parse_type {|[4]func()|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type simple func" =
   pp pp_type' parse_type {|func()|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type simple func with brackets" =
   pp pp_type' parse_type {|func()()|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type simple func with brackets and ws" =
   pp pp_type' parse_type {|func()  /* some comment */  ()|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type func with one arg and without returns" =
   pp pp_type' parse_type {|func(int)|};
   [%expect {| : Invalid type |}]
 ;;
 
-let%expect_test "type func with one arg and without returns" =
-  pp pp_type' parse_type {|func(int)|};
-  [%expect {| : Invalid type |}]
-;;
-
+(* bug *)
 let%expect_test "type func with mult args and without returns" =
   pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
   [%expect {| : Invalid type |}]
 ;;
 
-let%expect_test "type func with mult args and without returns" =
-  pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
-  [%expect {| : Invalid type |}]
-;;
-
+(* bug *)
 let%expect_test "type func with one return" =
   pp pp_type' parse_type {|func() int|};
   [%expect {| : Invalid type |}]
 ;;
 
-let%expect_test "type func with one return in brackets" =
-  pp pp_type' parse_type {|func() (int)|};
-  [%expect {| : Invalid type |}]
-;;
-
+(* bug *)
 let%expect_test "type func with multiple returns" =
   pp pp_type' parse_type {|func() (int, string)|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type func that gets func and returns func" =
   pp pp_type' parse_type {|func(func(int) string) func([4][5]int)|};
   [%expect {| : Invalid type |}]
 ;;
 
+(* bug *)
 let%expect_test "type func that returns func that returns func..." =
   pp pp_type' parse_type {|func() func() func() func() func() func()|};
   [%expect {| : Invalid type |}]

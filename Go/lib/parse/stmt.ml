@@ -65,8 +65,13 @@ let parse_short_var_decl =
 
 (* let parse_assign = return () *)
 
-let parse_incr = parse_ident <* ws_line <* string "++" >>| fun id -> Stmt_incr id
-let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr id
+let parse_incr =
+  parse_ident_not_blank <* ws_line <* string "++" >>| fun id -> Stmt_incr id
+;;
+
+let parse_decr =
+  parse_ident_not_blank <* ws_line <* string "--" >>| fun id -> Stmt_decr id
+;;
 
 let rec parse_if pstmt pblock =
   let* _ = string "if" in
@@ -89,7 +94,8 @@ let parse_continue = string "continue" *> return Stmt_continue
 
 (* TODO: return multiple expressions *)
 let parse_return =
-  string "return" *> ws_line *> parse_expr >>| fun expr -> Stmt_return (Some expr)
+  string "return" *> ws_line *> sep_by (ws_line *> char ',' *> ws) parse_expr
+  >>| fun expr_list -> Stmt_return expr_list
 ;;
 
 (* let parse_chan_send = return ()
@@ -127,3 +133,80 @@ let parse_block : block t =
 ;;
 
 (**************************************** Tests ****************************************)
+
+let pstmt = parse_stmt parse_block (* for tests *)
+
+let%expect_test "break stmt" =
+  pp pp_stmt pstmt {|break|};
+  [%expect {| Stmt_break |}]
+;;
+
+let%expect_test "continue stmt" =
+  pp pp_stmt pstmt {|continue|};
+  [%expect {| Stmt_continue |}]
+;;
+
+let%expect_test "incr stmt" =
+  pp pp_stmt pstmt {|a++|};
+  [%expect {| (Stmt_incr "a") |}]
+;;
+
+let%expect_test "incr stmt with ws_line" =
+  pp pp_stmt pstmt {|a    /* some comment */   ++|};
+  [%expect {| (Stmt_incr "a") |}]
+;;
+
+let%expect_test "incr stmt with blank ident" =
+  pp pp_stmt pstmt {|_++|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "decr stmt" =
+  pp pp_stmt pstmt {|a--|};
+  [%expect {| (Stmt_decr "a") |}]
+;;
+
+let%expect_test "decr stmt with ws_line" =
+  pp pp_stmt pstmt {|a    /* some comment */   --|};
+  [%expect {| (Stmt_decr "a") |}]
+;;
+
+let%expect_test "decr stmt with blank ident" =
+  pp pp_stmt pstmt {|_--|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "return without anything" =
+  pp pp_stmt pstmt {|return|};
+  [%expect {| (Stmt_return []) |}]
+;;
+
+let%expect_test "return with one expr" =
+  pp pp_stmt pstmt {|return|};
+  [%expect {| (Stmt_return []) |}]
+;;
+
+let%expect_test "return with one expr" =
+  pp pp_stmt pstmt {|return 5|};
+  [%expect {| (Stmt_return [(Expr_const (Const_int 5))]) |}]
+;;
+
+let%expect_test "return with multiple exprs and ws" =
+  pp
+    pp_stmt
+    pstmt
+    {|return 3    ,   
+             a  ,  // some comment 
+             true /* RARAVARV */    ,  nil|};
+  [%expect
+    {|
+    (Stmt_return
+       [(Expr_const (Const_int 3)); (Expr_ident "a"); (Expr_ident "true");
+         (Expr_ident "nil")]) |}]
+;;
+
+(* не работает из-за экспрешенов *)
+let%expect_test "return with multiple complex exprs" =
+  pp pp_stmt pstmt {|return -5 * _r + 8, !a && (b || c)|};
+  [%expect {| : end_of_input |}]
+;;
