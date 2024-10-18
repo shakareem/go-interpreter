@@ -58,12 +58,14 @@ let parse_simple_expr =
   <|> (parse_const >>| fun const -> Expr_const const)
 ;;
 
-(* нужно переиспользовать в стейтментах *)
-let parse_func_call pexpr =
+let parse_func_call pexpr : func_call t =
   let* func_name = ws *> parse_ident <* ws_line in
   let* args = parens (sep_by (ws_line *> char ',' *> ws) pexpr) in
-  return (Expr_call (Expr_ident func_name, args))
+  return (Expr_ident func_name, args)
 ;;
+
+(* нужно переиспользовать в стейтментах *)
+let parse_expr_func_call pexpr = parse_func_call pexpr >>| fun call -> Expr_call call
 
 (* only (a, b, c int) args supported, TODO: (a string, b int) *)
 let parse_func_args =
@@ -100,7 +102,7 @@ let parse_anon_func pblock =
 let parse_expr =
   fix (fun pexpr ->
     let arg =
-      parse_func_call pexpr <|> parse_simple_expr (* <|> parse_anon_func pblock *)
+      parse_expr_func_call pexpr <|> parse_simple_expr (* <|> parse_anon_func pblock *)
     in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in

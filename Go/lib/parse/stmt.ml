@@ -98,9 +98,10 @@ let parse_return =
   >>| fun expr_list -> Stmt_return expr_list
 ;;
 
+let parse_stmt_call = parse_func_call parse_expr >>| fun call -> Stmt_call call
+
 (* let parse_chan_send = return ()
    let parse_chan_receive = return ()
-   let parse_stmt_call = return ()
    let parse_defer = string "defer" *> ws_line *> return ()
    let parse_go = string "go" *> ws_line *> return () *)
 
@@ -115,12 +116,12 @@ let parse_stmt pblock =
       ; parse_break
       ; parse_continue
       ; parse_return
+      ; parse_stmt_call
         (*  ; parse_assign
             ; parse_for
             ; parse_range
             ; parse_chan_send
             ; parse_chan_receive
-            ; parse_stmt_call
             ; parse_defer
             ; parse_go *)
       ]
@@ -209,4 +210,37 @@ let%expect_test "return with multiple exprs and ws" =
 let%expect_test "return with multiple complex exprs" =
   pp pp_stmt pstmt {|return -5 * _r + 8, !a && (b || c)|};
   [%expect {| : end_of_input |}]
+;;
+
+let%expect_test "stmt func call with one simple arg" =
+  pp pp_stmt pstmt {|my_func(5)|};
+  [%expect {| (Stmt_call ((Expr_ident "my_func"), [(Expr_const (Const_int 5))])) |}]
+;;
+
+let%expect_test "stmt func callmultiple args" =
+  pp pp_stmt pstmt {|my_func(5, a, nil)|};
+  [%expect
+    {|
+    (Stmt_call
+       ((Expr_ident "my_func"),
+        [(Expr_const (Const_int 5)); (Expr_ident "a"); (Expr_ident "nil")])) |}]
+;;
+
+let%expect_test "stmt func call with complex expressions and comments" =
+  pp pp_stmt pstmt {|fac(   fac(2 + 2), 
+  34 * 75,
+  // aovnervo 
+  !a)|};
+  [%expect
+    {|
+    (Stmt_call
+       ((Expr_ident "fac"),
+        [(Expr_call
+            ((Expr_ident "fac"),
+             [(Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
+                 (Expr_const (Const_int 2))))
+               ]));
+          (Expr_bin_oper (Bin_multiply, (Expr_const (Const_int 34)),
+             (Expr_const (Const_int 75))));
+          (Expr_un_oper (Unary_not, (Expr_ident "a")))])) |}]
 ;;
