@@ -15,7 +15,7 @@ let rec combine_lists l1 l2 =
   | _, _ -> assert false (* bad, mb [] instead *)
 ;;
 
-let parse_lvalues = sep_by1 (ws_line *> char ',' *> ws_line) parse_ident
+let parse_lvalues = sep_by1 (ws_line *> char ',' *> ws) parse_ident
 let parse_rvalues = sep_by (ws_line *> char ',' *> ws) parse_expr
 
 let parse_long_var_decl =
@@ -63,7 +63,33 @@ let parse_short_var_decl =
   else return (Stmt_short_var_decl (Short_decl_mult_init (combine_lists lvalues rvalues)))
 ;;
 
-(* let parse_assign = return () *)
+let parse_assign =
+  let* lvalues = parse_lvalues in
+  let* _ = ws_line *> char '=' *> ws in
+  let* rvalues = parse_rvalues in
+  if List.length lvalues = 0 || List.length rvalues = 0
+  then fail "No identifiers or initializers in assignment"
+  else if List.length lvalues != List.length rvalues
+  then
+    if List.length rvalues == 1
+    then (
+      let rvalue =
+        match List.nth rvalues 0 with
+        | Some a -> a
+        | None -> assert false (* mb bad *)
+      in
+      match rvalue with
+      | Expr_call _ -> return (Stmt_assign (Assign_one_expr (lvalues, rvalue)))
+      | _ ->
+        fail
+          "Initializer has to ba a function call in assignments with multiple \
+           identifiers and one initializer")
+    else
+      fail
+        "Number of identifiers and initializers is not equal in assignment or \
+         initializer is not a single function with multiple returns"
+  else return (Stmt_assign (Assign_mult_expr (combine_lists lvalues rvalues)))
+;;
 
 let parse_incr =
   parse_ident_not_blank <* ws_line <* string "++" >>| fun id -> Stmt_incr id
@@ -117,8 +143,8 @@ let parse_stmt pblock =
       ; parse_continue
       ; parse_return
       ; parse_stmt_call
-        (*  ; parse_assign
-            ; parse_for
+      ; parse_assign
+        (*  ; parse_for
             ; parse_range
             ; parse_chan_send
             ; parse_chan_receive
@@ -243,4 +269,62 @@ let%expect_test "stmt func call with complex expressions and comments" =
           (Expr_bin_oper (Bin_multiply, (Expr_const (Const_int 34)),
              (Expr_const (Const_int 75))));
           (Expr_un_oper (Unary_not, (Expr_ident "a")))])) |}]
+;;
+
+let%expect_test "stmt assign one lvalue, one rvalue" =
+  pp pp_stmt pstmt {|a = 5|};
+  [%expect {| (Stmt_assign (Assign_mult_expr [("a", (Expr_const (Const_int 5)))])) |}]
+;;
+
+let%expect_test "stmt assign with mult equal number of lvalues and rvalues and ws" =
+  pp
+    pp_stmt
+    pstmt
+    {|a, 
+  b , // comment
+  c = 
+  
+  5, /* comment////// */true,
+   "hello"|};
+  [%expect {|
+    (Stmt_assign
+       (Assign_mult_expr
+          [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "true"));
+            ("c", (Expr_const (Const_string "hello")))])) |}]
+;;
+
+let%expect_test "stmt assign with mult equal number of lvalues and rvalues and ws" =
+  pp
+    pp_stmt
+    pstmt
+    {|a, 
+  b , // comment
+  c = 
+  
+  5, /* comment////// */true,
+   "hello"|};
+  [%expect {|
+    (Stmt_assign
+       (Assign_mult_expr
+          [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "true"));
+            ("c", (Expr_const (Const_string "hello")))])) |}]
+;;
+
+let%expect_test "stmt assign mult lvalues and one rvalue that is a func call" =
+  pp pp_stmt pstmt {|a, b ,c = get_three()|};
+  [%expect
+    {|
+    (Stmt_assign
+       (Assign_one_expr (["a"; "b"; "c"],
+          (Expr_call ((Expr_ident "get_three"), []))))) |}]
+;;
+
+let%expect_test "stmt assign mult lvalues and one rvalue that is not a func call" =
+  pp pp_stmt pstmt {|a, b ,c = abc|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt assign mult unequal lvalues and rvalues" =
+  pp pp_stmt pstmt {|a, b ,c = 2, 3, 4, 5 , 6|};
+  [%expect {| : Incorrect statement |}]
 ;;

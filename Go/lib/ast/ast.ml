@@ -104,9 +104,7 @@ and func_call = expr * expr list [@@deriving show { with_path = false }]
 and stmt =
   | Stmt_long_var_decl of long_var_decl (** See long_var_decl type *)
   | Stmt_short_var_decl of short_var_decl (** See short_var_decl type *)
-  | Stmt_assign of (ident * expr) list
-  (** Assignment to a variable such as [a = 3], [a, b = 4, 5].
-      Invariant: size of the list >= 1 *)
+  | Stmt_assign of assign (** See assign type *)
   | Stmt_incr of ident (** An increment of a variable: [a++] *)
   | Stmt_decr of ident (** A decrement of a variable: [a--] *)
   | Stmt_if of
@@ -152,6 +150,15 @@ and stmt =
   | Stmt_defer of func_call (** See func_call type *)
   | Stmt_go of func_call (** See func_call type *)
 [@@deriving show { with_path = false }]
+
+(** Variable assignments *)
+and assign =
+  | Assign_mult_expr of (ident * expr) list
+  (** Assignment to a variable with equal number of identifiers and initializers
+      such as [a = 3], [a, b = 4, 5]. Invariant: size of the list >= 1 *)
+  | Assign_one_expr of ident list * expr
+  (** Assignment to a variable with one initializer that is a function
+      such as [a = 3], [a, b = 4, 5]. Invariant: size of the list >= 1 *)
 
 (** Block of statements in curly braces *)
 and block = stmt list [@@deriving show { with_path = false }]
