@@ -153,7 +153,7 @@ let%expect_test "expr ident" =
 
 (* bug *)
 let%expect_test "expr ident in braces" =
-  pp pp_expr parse_expr {|(abc))|};
+  pp pp_expr parse_expr {|(abc)|};
   [%expect {|
     : char '"'|}]
 ;;
@@ -203,6 +203,18 @@ let%expect_test "fac_piece1 test" =
                (Expr_const (Const_int 1))))
              ]))
        ))|}]
+;;
+
+let%expect_test "func call with multiple complex arguments" =
+  pp pp_expr parse_expr "three(abc, 2 + 3, fac(25))";
+  [%expect
+    {|
+    (Expr_call
+       ((Expr_ident "three"),
+        [(Expr_ident "abc");
+          (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
+             (Expr_const (Const_int 3))));
+          (Expr_call ((Expr_ident "fac"), [(Expr_const (Const_int 25))]))]))|}]
 ;;
 
 let%expect_test "fac_piece2 test" =

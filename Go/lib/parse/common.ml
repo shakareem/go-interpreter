@@ -62,6 +62,7 @@ let parse_const_string =
   char '"' *> parse_string <* char '"'
 ;;
 
+(* TODO: add const array *)
 let parse_const = parse_const_int <|> parse_const_string
 
 let parse_ident =
@@ -131,7 +132,7 @@ let%expect_test "very big int" =
   Called from Angstrom__Parser.Monad.(>>|).(fun).succ' in file "lib/parser.ml", line 64, characters 61-66
   Called from Angstrom__Parser.parse_bigstring in file "lib/parser.ml", line 43, characters 52-93
   Called from Parse__Common.pp in file "lib/parse/common.ml", line 10, characters 8-70
-  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 120, characters 2-70
+  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 121, characters 2-70
   Called from Expect_test_collector.Make.Instance.exec in file "collector/expect_test_collector.ml", line 244, characters 12-19 |}]
 ;;
 

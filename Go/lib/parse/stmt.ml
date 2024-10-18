@@ -20,42 +20,53 @@ let parse_rvalues = sep_by (ws_line *> char ',' *> ws) parse_expr
 
 let parse_long_var_decl =
   let* _ = string "var" *> ws in
-  let* lvalues = parse_lvalues in
-  let* vars_type =
-    ws_line *> parse_type <* ws_line >>| (fun t -> Some t) <|> ws_line *> return None
-  in
-  let* _ = char '=' *> ws in
+  let* lvalues = parse_lvalues <* ws_line in
+  let* vars_type = parse_type >>| (fun t -> Some t) <|> return None in
+  let* _ = ws_line *> char '=' *> ws in
   let* rvalues = parse_rvalues in
-  match rvalues, List.length lvalues = List.length rvalues with
-  | _ :: _, true ->
-    return (Long_decl_mult_init (vars_type, combine_lists lvalues rvalues))
-  | _ :: _, false ->
-    if List.length rvalues = 1
-    then (
-      match List.nth rvalues 0 with
-      | Some expr -> return (Long_decl_one_init (vars_type, lvalues, expr))
-      | None -> assert false)
-    else
-      fail
-        "Number of lvalues and rvalues in variable declarations should be the same or \
-         rvalue should be a function that returns multiple values"
-  | [], _ ->
-    (match vars_type with
-     | Some t -> return (Long_decl_no_init (t, lvalues))
-     | None -> fail "Long variable declaration without initializers should have type")
+  if List.length lvalues = 0
+  then fail "No identifiers in long variable declaration"
+  else (
+    match rvalues, List.length lvalues = List.length rvalues with
+    | _ :: _, true ->
+      return (Long_decl_mult_init (vars_type, combine_lists lvalues rvalues))
+    | _ :: _, false ->
+      if List.length rvalues = 1
+      then (
+        match List.nth rvalues 0 with
+        | Some (Expr_call _ as expr) ->
+          return (Long_decl_one_init (vars_type, lvalues, expr))
+        | Some _ | None ->
+          fail
+            "Initializer has to ba a function call in variavle declarations with \
+             multiple identifiers and one initializer")
+      else
+        fail
+          "Number of lvalues and rvalues in variable declarations should be the same or \
+           rvalue should be a function that returns multiple values"
+    | [], _ ->
+      (match vars_type with
+       | Some t -> return (Long_decl_no_init (t, lvalues))
+       | None -> fail "Long variable declaration without initializers should have type"))
 ;;
 
 let parse_short_var_decl =
   let* lvalues = parse_lvalues in
   let* _ = ws_line *> string ":=" *> ws in
   let* rvalues = parse_rvalues in
-  if List.length lvalues != List.length rvalues
+  if List.length lvalues = 0 || List.length rvalues = 0
+  then fail "No identifiers or initializers in short vaiable declarations"
+  else if List.length lvalues != List.length rvalues
   then
     if List.length rvalues = 1
     then (
       match List.nth rvalues 0 with
-      | Some expr -> return (Stmt_short_var_decl (Short_decl_one_init (lvalues, expr)))
-      | None -> assert false)
+      | Some (Expr_call _ as expr) ->
+        return (Stmt_short_var_decl (Short_decl_one_init (lvalues, expr)))
+      | Some _ | None ->
+        fail
+          "Initializer has to ba a function call in variavle declarations with multiple \
+           identifiers and one initializer")
     else
       fail
         "Number of lvalues and rvalues should be the same or rvalue should be a function \
@@ -73,14 +84,10 @@ let parse_assign =
   then
     if List.length rvalues == 1
     then (
-      let rvalue =
-        match List.nth rvalues 0 with
-        | Some a -> a
-        | None -> assert false (* mb bad *)
-      in
-      match rvalue with
-      | Expr_call _ -> return (Stmt_assign (Assign_one_expr (lvalues, rvalue)))
-      | _ ->
+      match List.nth rvalues 0 with
+      | Some (Expr_call _ as expr) ->
+        return (Stmt_assign (Assign_one_expr (lvalues, expr)))
+      | Some _ | None ->
         fail
           "Initializer has to ba a function call in assignments with multiple \
            identifiers and one initializer")
@@ -118,7 +125,6 @@ let rec parse_if pstmt pblock =
 let parse_break = string "break" *> return Stmt_break
 let parse_continue = string "continue" *> return Stmt_continue
 
-(* TODO: return multiple expressions *)
 let parse_return =
   string "return" *> ws_line *> sep_by (ws_line *> char ',' *> ws) parse_expr
   >>| fun expr_list -> Stmt_return expr_list
@@ -127,9 +133,15 @@ let parse_return =
 let parse_stmt_call = parse_func_call parse_expr >>| fun call -> Stmt_call call
 
 (* let parse_chan_send = return ()
-   let parse_chan_receive = return ()
-   let parse_defer = string "defer" *> ws_line *> return ()
-   let parse_go = string "go" *> ws_line *> return () *)
+   let parse_chan_receive = return () *)
+
+let parse_defer =
+  string "defer" *> ws *> parse_func_call parse_expr >>| fun call -> Stmt_defer call
+;;
+
+let parse_go =
+  string "go" *> ws *> parse_func_call parse_expr >>| fun call -> Stmt_go call
+;;
 
 let parse_stmt pblock =
   fix (fun pstmt ->
@@ -144,12 +156,12 @@ let parse_stmt pblock =
       ; parse_return
       ; parse_stmt_call
       ; parse_assign
+      ; parse_defer
+      ; parse_go
         (*  ; parse_for
             ; parse_range
             ; parse_chan_send
-            ; parse_chan_receive
-            ; parse_defer
-            ; parse_go *)
+            ; parse_chan_receive *)
       ]
       ~failure_msg:"Incorrect statement")
 ;;
@@ -286,24 +298,8 @@ let%expect_test "stmt assign with mult equal number of lvalues and rvalues and w
   
   5, /* comment////// */true,
    "hello"|};
-  [%expect {|
-    (Stmt_assign
-       (Assign_mult_expr
-          [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "true"));
-            ("c", (Expr_const (Const_string "hello")))])) |}]
-;;
-
-let%expect_test "stmt assign with mult equal number of lvalues and rvalues and ws" =
-  pp
-    pp_stmt
-    pstmt
-    {|a, 
-  b , // comment
-  c = 
-  
-  5, /* comment////// */true,
-   "hello"|};
-  [%expect {|
+  [%expect
+    {|
     (Stmt_assign
        (Assign_mult_expr
           [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "true"));
@@ -327,4 +323,152 @@ let%expect_test "stmt assign mult lvalues and one rvalue that is not a func call
 let%expect_test "stmt assign mult unequal lvalues and rvalues" =
   pp pp_stmt pstmt {|a, b ,c = 2, 3, 4, 5 , 6|};
   [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt long single var decl no type" =
+  pp pp_stmt pstmt {|var a = 5|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init (None, [("a", (Expr_const (Const_int 5)))]))) |}]
+;;
+
+let%expect_test "stmt long mult var decl no type" =
+  pp pp_stmt pstmt {|var a, b, c = 5, nil, "hi"|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init (None,
+          [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "nil"));
+            ("c", (Expr_const (Const_string "hi")))]
+          ))) |}]
+;;
+
+(* не работает из-за экспрешенов *)
+let%expect_test "stmt long single var decl with type" =
+  pp pp_stmt pstmt {|var a func() = func() {}|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt long mult var decl with type" =
+  pp pp_stmt pstmt {|var a, b int = 2, 3|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init ((Some Type_int),
+          [("a", (Expr_const (Const_int 2))); ("b", (Expr_const (Const_int 3)))]
+          ))) |}]
+;;
+
+(* нет константных массивов *)
+let%expect_test "stmt long mult var decl with type" =
+  pp pp_stmt pstmt {|var a, b, c [2]int = [2]int{1, 2}, [2]int{}, [2]int{10, 20}|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt long single var decl with type" =
+  pp pp_stmt pstmt {|var a, b, c = 5, nil, "hi"|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init (None,
+          [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "nil"));
+            ("c", (Expr_const (Const_string "hi")))]
+          ))) |}]
+;;
+
+let%expect_test "stmt long var decl mult lvalues and one rvalue that is a func call" =
+  pp pp_stmt pstmt {|var a, b, c = get_three(1, 2, 3)|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_one_init (None, ["a"; "b"; "c"],
+          (Expr_call
+             ((Expr_ident "get_three"),
+              [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+                (Expr_const (Const_int 3))]))
+          ))) |}]
+;;
+
+let%expect_test "stmt long var decl mult lvalues and one rvalue that is not a func call" =
+  pp pp_stmt pstmt {|var a, b, c = true|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt long var decl unequal lvalues and rvalues" =
+  pp pp_stmt pstmt {|var a, b, c = 1, 2, 3, 4|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt short single var decl" =
+  pp pp_stmt pstmt {|a := 7|};
+  [%expect
+    {|
+    (Stmt_short_var_decl
+       (Short_decl_mult_init [("a", (Expr_const (Const_int 7)))])) |}]
+;;
+
+let%expect_test "stmt short mult var decl" =
+  pp pp_stmt pstmt {|a, b, c := true, 567, "string"|};
+  [%expect
+    {|
+    (Stmt_short_var_decl
+       (Short_decl_mult_init
+          [("a", (Expr_ident "true")); ("b", (Expr_const (Const_int 567)));
+            ("c", (Expr_const (Const_string "string")))])) |}]
+;;
+
+let%expect_test "stmt short var decl mult lvalues and one rvalue that is a func call" =
+  pp pp_stmt pstmt {|a, b, c := three(abc, 2 + 3, fac(25))|};
+  [%expect
+    {|
+    (Stmt_short_var_decl
+       (Short_decl_one_init (["a"; "b"; "c"],
+          (Expr_call
+             ((Expr_ident "three"),
+              [(Expr_ident "abc");
+                (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
+                   (Expr_const (Const_int 3))));
+                (Expr_call ((Expr_ident "fac"), [(Expr_const (Const_int 25))]))]))
+          ))) |}]
+;;
+
+let%expect_test "stmt short var decl mult lvalues and one rvalue that is not a func call" =
+  pp pp_stmt pstmt {|a, b, c := abcdefg"|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt short var decl unequal lvalues and rvalues" =
+  pp pp_stmt pstmt {|a, b, c := 1, 2, 3, 4|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt defer with func" =
+  pp pp_stmt pstmt {|defer 
+                      call(abc)|};
+  [%expect {|
+    (Stmt_defer ((Expr_ident "call"), [(Expr_ident "abc")])) |}]
+;;
+
+let%expect_test "stmt defer with expr that is not a func" =
+  pp pp_stmt pstmt {|defer 2 + 2 * 5|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt go with func" =
+  pp pp_stmt pstmt {|go 
+                      call(abc)|};
+  [%expect {|
+    (Stmt_go ((Expr_ident "call"), [(Expr_ident "abc")])) |}]
+;;
+
+let%expect_test "stmt go with expr that is not a func" =
+  pp pp_stmt pstmt {|go 2 + 2 * 5|};
+  [%expect {|
+    : Incorrect statement |}]
 ;;
