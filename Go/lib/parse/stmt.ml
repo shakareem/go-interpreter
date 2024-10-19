@@ -106,30 +106,6 @@ let parse_decr =
   parse_ident_not_blank <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 ;;
 
-let rec parse_if pstmt pblock =
-  let* _ = string "if" in
-  let* init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
-  let* cond = parse_expr <* ws_line in
-  let* if_body = pblock <* ws_line in
-  let* else_body =
-    string "else" *> ws *> (parse_if pstmt pblock >>| fun if_stmt -> Some if_stmt)
-    <|> (pblock >>| fun block -> Some (Stmt_block block))
-    <|> return None
-  in
-  return (Stmt_if { init; cond; if_body; else_body })
-;;
-
-(* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]
-   let parse_for = return ()
-   let parse_range = return () *)
-let parse_break = string "break" *> return Stmt_break
-let parse_continue = string "continue" *> return Stmt_continue
-
-let parse_return =
-  string "return" *> ws_line *> sep_by (ws_line *> char ',' *> ws) parse_expr
-  >>| fun expr_list -> Stmt_return expr_list
-;;
-
 let parse_stmt_call = parse_func_call parse_expr >>| fun call -> Stmt_call call
 
 (* let parse_chan_send = return ()
@@ -142,6 +118,55 @@ let parse_defer =
 let parse_go =
   string "go" *> ws *> parse_func_call parse_expr >>| fun call -> Stmt_go call
 ;;
+
+let parse_break = string "break" *> return Stmt_break
+let parse_continue = string "continue" *> return Stmt_continue
+
+let parse_return =
+  string "return" *> ws_line *> sep_by (ws_line *> char ',' *> ws) parse_expr
+  >>| fun expr_list -> Stmt_return expr_list
+;;
+
+let is_valid_init stmt =
+  match stmt with
+  | Some (Stmt_short_var_decl _)
+  | Some (Stmt_assign _)
+  | Some (Stmt_incr _)
+  | Some (Stmt_decr _)
+  | Some (Stmt_call _)
+  | None -> true
+  | _ -> false
+;;
+
+let parse_if pstmt pblock =
+  let* _ = string "if" *> ws in
+  let* init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
+  if not (is_valid_init init)
+  then fail "Incorrect statement in if initialization"
+  else
+    let* cond = ws *> parse_expr <* ws_line in
+    let* if_body = pblock <* ws_line in
+    let* else_body =
+      let* else_body_exists = string "else" *> ws *> return true <|> return false in
+      let* else_body = pstmt in
+      if else_body_exists
+      then (
+        match else_body with
+        | Stmt_if _ | Stmt_block _ -> return (Some else_body)
+        | _ -> fail "Only block or if statement can be used after else")
+      else return None
+      (* *> (parse_if pstmt pblock
+         >>| (fun if_stmt -> Some if_stmt)
+         <|> (pblock >>| fun block -> Some (Stmt_block block))
+         <|> fail "Only block or if statement can be ised after else")
+         <|> return None *)
+    in
+    return (Stmt_if { init; cond; if_body; else_body })
+;;
+
+(* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]
+   let parse_for = return ()
+   let parse_range = return () *)
 
 let parse_stmt pblock =
   fix (fun pstmt ->
@@ -158,6 +183,7 @@ let parse_stmt pblock =
       ; parse_assign
       ; parse_defer
       ; parse_go
+      ; (pblock >>| fun block -> Stmt_block block)
         (*  ; parse_for
             ; parse_range
             ; parse_chan_send
@@ -469,6 +495,55 @@ let%expect_test "stmt go with func" =
 
 let%expect_test "stmt go with expr that is not a func" =
   pp pp_stmt pstmt {|go 2 + 2 * 5|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt empty block" =
+  pp pp_stmt pstmt {|{}|};
+  [%expect {|
+    (Stmt_block []) |}]
+;;
+
+let%expect_test "stmt block of one stmt" =
+  pp pp_stmt pstmt {|{ a := 5 }|};
+  [%expect
+    {|
+    (Stmt_block
+       [(Stmt_short_var_decl
+           (Short_decl_mult_init [("a", (Expr_const (Const_int 5)))]))
+         ]) |}]
+;;
+
+let%expect_test "stmt block of mult stmts, separated by semicolon" =
+  pp pp_stmt pstmt {|{ a := 5; a++; println(a) }|};
+  [%expect
+    {|
+    (Stmt_block
+       [(Stmt_short_var_decl
+           (Short_decl_mult_init [("a", (Expr_const (Const_int 5)))]));
+         (Stmt_incr "a");
+         (Stmt_call ((Expr_ident "println"), [(Expr_ident "a")]))]) |}]
+;;
+
+let%expect_test "stmt block of mult stmts, separated by newlines" =
+  pp
+    pp_stmt
+    pstmt
+    {|{ var hi string = "hi"
+    // string that says hi
+      go get_int(hi)}|};
+  [%expect
+    {|
+    (Stmt_block
+       [(Stmt_long_var_decl
+           (Long_decl_mult_init ((Some Type_string),
+              [("hi", (Expr_const (Const_string "hi")))])));
+         (Stmt_go ((Expr_ident "get_int"), [(Expr_ident "hi")]))]) |}]
+;;
+
+let%expect_test "stmt simple if" =
+  pp pp_stmt pstmt {|if true {}|};
   [%expect {|
     : Incorrect statement |}]
 ;;
