@@ -314,7 +314,16 @@ let%expect_test "return with multiple exprs and ws" =
 (* не работает из-за экспрешенов *)
 let%expect_test "return with multiple complex exprs" =
   pp pp_stmt pstmt {|return -5 * _r + 8, !a && (b || c)|};
-  [%expect {| : end_of_input |}]
+  [%expect {|
+    (Stmt_return
+       [(Expr_bin_oper (Bin_sum,
+           (Expr_bin_oper (Bin_multiply,
+              (Expr_un_oper (Unary_minus, (Expr_const (Const_int 5)))),
+              (Expr_ident "_r"))),
+           (Expr_const (Const_int 8))));
+         (Expr_bin_oper (Bin_and, (Expr_un_oper (Unary_not, (Expr_ident "a"))),
+            (Expr_bin_oper (Bin_or, (Expr_ident "b"), (Expr_ident "c")))))
+         ]) |}]
 ;;
 
 let%expect_test "stmt func call with one simple arg" =

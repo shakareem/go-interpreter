@@ -108,13 +108,15 @@ let parse_anon_func pblock =
 let parse_expr =
   fix (fun pexpr ->
     let arg =
-      parse_expr_func_call pexpr <|> parse_simple_expr (* <|> parse_anon_func pblock *)
-    in
+      parens pexpr <|> parse_expr_func_call pexpr <|> parse_simple_expr (* <|> parse_anon_func pblock *)
+    in  
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
     let arg = chainl1 arg (pesum <|> pesub) in
     let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in
+    let arg = chainr1 arg peand in
+    let arg = chainr1 arg peor in
     let arg = fix (fun _ -> arg) <|> arg in
     arg)
 ;;
@@ -157,18 +159,17 @@ let%expect_test "expr ident" =
     (Expr_ident "abcdefg__")|}]
 ;;
 
-(* bug *)
 let%expect_test "expr ident in braces" =
   pp pp_expr parse_expr {|(abc)|};
   [%expect {|
-    : char '"'|}]
+    (Expr_ident "abc")|}]
 ;;
 
-(* bug *)
 let%expect_test "expr logical operations" =
-  pp pp_expr parse_expr {|!a && (b || c)|};
+  pp pp_expr parse_expr {|a && (b || c)|};
   [%expect {|
-    : end_of_input|}]
+    (Expr_bin_oper (Bin_and, (Expr_ident "a"),
+       (Expr_bin_oper (Bin_or, (Expr_ident "b"), (Expr_ident "c")))))|}]
 ;;
 
 let%expect_test "expr bin mult and sum" =
