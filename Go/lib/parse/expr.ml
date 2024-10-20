@@ -106,16 +106,41 @@ let parse_anon_func pblock =
 ;;
 
 let parse_chan_receive =
-  lift
-    (fun idt -> Expr_chan_recieve(idt))
-    (token "<-" *> parse_ident)
+  lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
+;;
+
+let parse_array pexpr =
+  let add_similar_elements lst element count =
+    let repeated_elements = List.init count (fun _ -> element) in
+    lst @ repeated_elements
+  in
+  let array_type_fix size type' lst =
+    match type' with
+    | Type_int ->
+      add_similar_elements lst (Expr_const (Const_int 0)) (size - List.length lst)
+    | Type_string ->
+      add_similar_elements lst (Expr_const (Const_string "")) (size - List.length lst)
+    | Type_bool ->
+      add_similar_elements lst (Expr_const (Const_bool false)) (size - List.length lst)
+    | _ -> lst
+  in
+  lift3
+    (fun size type' list_exprs ->
+      Expr_array (type', array_type_fix size type' list_exprs))
+    (square_brackets parse_int)
+    (ws *> parse_type)
+    (curly_braces (sep_by (ws_line *> char ',' *> ws) pexpr) <|> list [])
 ;;
 
 let parse_expr =
   fix (fun pexpr ->
     let arg =
-      parens pexpr <|> parse_expr_func_call pexpr <|> parse_chan_receive <|> parse_simple_expr (* <|> parse_anon_func pblock *)
-    in  
+      parens pexpr
+      <|> parse_expr_func_call pexpr
+      <|> parse_chan_receive
+      <|> parse_simple_expr (* <|> parse_anon_func pblock *)
+      <|> parse_array pexpr
+    in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
@@ -133,6 +158,26 @@ let%expect_test "expr const int" =
   pp pp_expr parse_expr {|123|};
   [%expect {|
     (Expr_const (Const_int 123))|}]
+;;
+
+let%expect_test "expr simple array" =
+  pp pp_expr parse_expr {|[3]int|};
+  [%expect
+    {|
+    (Expr_array (Type_int,
+       [(Expr_const (Const_int 0)); (Expr_const (Const_int 0));
+         (Expr_const (Const_int 0))]
+       )) |}]
+;;
+
+let%expect_test "expr array with init" =
+  pp pp_expr parse_expr {|[3]int{1, 2}|};
+  [%expect
+    {|
+    (Expr_array (Type_int,
+       [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+         (Expr_const (Const_int 0))]
+       )) |}]
 ;;
 
 let%expect_test "expr const string" =
@@ -173,7 +218,8 @@ let%expect_test "expr ident in braces" =
 
 let%expect_test "expr logical operations" =
   pp pp_expr parse_expr {|a && (b || c)|};
-  [%expect {|
+  [%expect
+    {|
     (Expr_bin_oper (Bin_and, (Expr_ident "a"),
        (Expr_bin_oper (Bin_or, (Expr_ident "b"), (Expr_ident "c")))))|}]
 ;;
@@ -252,8 +298,6 @@ let%expect_test "channel recieve test" =
   pp pp_expr parse_expr "<-c + 1";
   [%expect
     {|
-    (Expr_bin_oper (Bin_sum,
-       (Expr_bin_oper (Bin_sum, (Expr_un_oper (Unary_minus, (Expr_ident "n"))),
-          (Expr_const (Const_int 2)))),
-       (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1))))))|}]
+    (Expr_bin_oper (Bin_sum, (Expr_chan_recieve "c"), (Expr_const (Const_int 1))
+       ))|}]
 ;;

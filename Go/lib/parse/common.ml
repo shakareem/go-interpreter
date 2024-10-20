@@ -48,10 +48,13 @@ let ws = skip_many (parse_comment <|> skip_whitespace)
 let ws_line = skip_many (parse_block_comment <|> skip_line_whitespace)
 let token s = ws_line *> string s <* ws
 let parens p = char '(' *> ws *> p <* ws_line <* char ')'
+let square_brackets p = char '[' *> ws *> p <* ws_line <* char ']'
+let curly_braces p = char '{' *> ws *> p <* ws_line <* char '}'
 
 (* at least one newline *)
 let parse_newline = ws_line *> char '\n' *> ws
 let parse_stmt_sep = parse_newline <|> ws *> char ';' *> ws
+let parse_int = take_while1 Char.is_digit >>| fun num -> Int.of_string num
 
 let parse_const_int =
   take_while1 Char.is_digit >>| fun num -> Const_int (Int.of_string num)
@@ -128,11 +131,11 @@ let%expect_test "very big int" =
 
   (Failure "Int.of_string: \"9999999999999999999999999999999999999999\"")
   Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
-  Called from Parse__Common.parse_const_int.(fun) in file "lib/parse/common.ml", line 57, characters 53-72
+  Called from Parse__Common.parse_const_int.(fun) in file "lib/parse/common.ml", line 60, characters 53-72
   Called from Angstrom__Parser.Monad.(>>|).(fun).succ' in file "lib/parser.ml", line 64, characters 61-66
   Called from Angstrom__Parser.parse_bigstring in file "lib/parser.ml", line 43, characters 52-93
   Called from Parse__Common.pp in file "lib/parse/common.ml", line 10, characters 8-70
-  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 121, characters 2-70
+  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 124, characters 2-70
   Called from Expect_test_collector.Make.Instance_io.exec in file "collector/expect_test_collector.ml", line 234, characters 12-19 |}]
 ;;
 
@@ -199,12 +202,6 @@ let%expect_test "type bool" =
 let%expect_test "type string" =
   pp pp_type' parse_type {|string|};
   [%expect {| Type_string |}]
-;;
-
-(* bug *)
-let%expect_test "type simple array" =
-  pp pp_type' parse_type {|[3]int|};
-  [%expect {| : Invalid type |}]
 ;;
 
 (* bug *)

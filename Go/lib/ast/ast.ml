@@ -20,6 +20,7 @@ type type' =
 type const =
   | Const_int of int (** Integer constants such as [0], [123] *)
   | Const_string of string (** Constant strings such as ["my_string"] *)
+  | Const_bool of bool (** Constant bool such as [false] *)
 [@@deriving show { with_path = false }]
 
 (** identificator for a variable or a function *)
@@ -74,7 +75,7 @@ type expr =
   | Expr_anon_func of anon_func (** See anon_func type *)
   | Expr_call of func_call (** See func_call type *)
   | Expr_chan_recieve of ident (** Channel recieve operation [<-c] *)
-  [@@deriving show { with_path = false }]
+[@@deriving show { with_path = false }]
 
 (** An anonymous functions such as:
     [func() {}],
