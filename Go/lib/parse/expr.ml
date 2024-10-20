@@ -64,32 +64,38 @@ let parse_func_call pexpr : func_call t =
   return (Expr_ident func_name, args)
 ;;
 
-(* нужно переиспользовать в стейтментах *)
 let parse_expr_func_call pexpr = parse_func_call pexpr >>| fun call -> Expr_call call
 
-(* only (a, b, c int) args supported, TODO: (a string, b int) *)
-let parse_func_args =
-  parens
-    (let* idents = sep_by (ws_line *> char ',' *> ws) parse_ident in
-     let* t = ws_line *> parse_type in
-     return (List.map ~f:(fun id -> id, t) idents))
+let parse_idents_with_types =
+  let* args_lists =
+    sep_by1
+      (ws_line *> char ',' *> ws)
+      (let* idents = sep_by1 (ws_line *> char ',' *> ws) parse_ident in
+       let* t = ws_line *> parse_type in
+       return (List.map ~f:(fun id -> id, t) idents))
+  in
+  return (List.concat args_lists)
 ;;
 
-(* TODO: (a int, b string) *)
+let parse_func_args = parens parse_idents_with_types <|> (parens ws >>| fun _ -> [])
+
 let parse_func_return_values =
-  parse_type >>| (fun t -> Only_types [ t ]) <|> return (Only_types [])
+  choice
+    [ (parens parse_idents_with_types >>| fun returns -> Some (Ident_and_types returns))
+    ; (parens (sep_by1 (ws_line *> char ',' *> ws) parse_type)
+       >>| fun types -> Some (Only_types types))
+    ; (parse_type >>| fun t -> Some (Only_types [ t ]))
+    ; (let* _ = parens ws <|> return () in
+       let* char = ws_line *> peek_char_fail in
+       match char with
+       | '{' -> return None
+       | _ -> fail "Incorrect func return values")
+    ]
 ;;
 
 let parse_func_args_returns_and_body pblock =
   let* args = parse_func_args <* ws_line in
-  let* returns =
-    parse_func_return_values
-    >>| (fun returns ->
-          match returns with
-          | Only_types (_ :: _) | Ident_and_types _ -> Some returns
-          | Only_types [] -> None)
-    <* ws_line
-  in
+  let* returns = parse_func_return_values <* ws_line in
   let* body = pblock in
   return { args; returns; body }
 ;;

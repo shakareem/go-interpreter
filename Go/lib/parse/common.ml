@@ -47,7 +47,7 @@ let parse_comment = parse_line_comment <|> parse_block_comment
 let ws = skip_many (parse_comment <|> skip_whitespace)
 let ws_line = skip_many (parse_block_comment <|> skip_line_whitespace)
 let token s = ws_line *> string s <* ws
-let parens p = token "(" *> p <* token ")"
+let parens p = char '(' *> ws *> p <* ws_line <* char ')'
 
 (* at least one newline *)
 let parse_newline = ws_line *> char '\n' *> ws
