@@ -16,38 +16,41 @@ let rec combine_lists l1 l2 =
 ;;
 
 let parse_lvalues = sep_by1 (ws_line *> char ',' *> ws) parse_ident
-let parse_rvalues = sep_by (ws_line *> char ',' *> ws) parse_expr
+let parse_rvalues = sep_by1 (ws_line *> char ',' *> ws) parse_expr
 
 let parse_long_var_decl =
   let* _ = string "var" *> ws in
   let* lvalues = parse_lvalues <* ws_line in
   let* vars_type = parse_type >>| (fun t -> Some t) <|> return None in
-  let* _ = ws_line *> char '=' *> ws in
-  let* rvalues = parse_rvalues in
-  if List.length lvalues = 0
-  then fail "No identifiers in long variable declaration"
-  else (
-    match rvalues, List.length lvalues = List.length rvalues with
-    | _ :: _, true ->
-      return (Long_decl_mult_init (vars_type, combine_lists lvalues rvalues))
-    | _ :: _, false ->
-      if List.length rvalues = 1
-      then (
-        match List.nth rvalues 0 with
-        | Some (Expr_call _ as expr) ->
-          return (Long_decl_one_init (vars_type, lvalues, expr))
-        | Some _ | None ->
+  let* with_init = ws_line *> char '=' *> ws *> return true <|> return false in
+  if not with_init
+  then (
+    match vars_type with
+    | Some t -> return (Long_decl_no_init (t, lvalues))
+    | None -> fail "Long variable declaration without initializers should have type")
+  else
+    let* rvalues = parse_rvalues in
+    if List.length lvalues = 0
+    then fail "No identifiers in long variable declaration"
+    else (
+      match rvalues, List.length lvalues = List.length rvalues with
+      | _ :: _, true ->
+        return (Long_decl_mult_init (vars_type, combine_lists lvalues rvalues))
+      | _ :: _, false ->
+        if List.length rvalues = 1
+        then (
+          match List.nth rvalues 0 with
+          | Some (Expr_call _ as expr) ->
+            return (Long_decl_one_init (vars_type, lvalues, expr))
+          | Some _ | None ->
+            fail
+              "Initializer has to ba a function call in variable declarations with \
+               multiple identifiers and one initializer")
+        else
           fail
-            "Initializer has to ba a function call in variavle declarations with \
-             multiple identifiers and one initializer")
-      else
-        fail
-          "Number of lvalues and rvalues in variable declarations should be the same or \
-           rvalue should be a function that returns multiple values"
-    | [], _ ->
-      (match vars_type with
-       | Some t -> return (Long_decl_no_init (t, lvalues))
-       | None -> fail "Long variable declaration without initializers should have type"))
+            "Number of lvalues and rvalues in variable declarations should be the same \
+             or rvalue should be a function that returns multiple values"
+      | [], _ -> assert false)
 ;;
 
 let parse_short_var_decl =
@@ -349,6 +352,13 @@ let%expect_test "stmt assign mult lvalues and one rvalue that is not a func call
 let%expect_test "stmt assign mult unequal lvalues and rvalues" =
   pp pp_stmt pstmt {|a, b ,c = 2, 3, 4, 5 , 6|};
   [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt long single var decl without init" =
+  pp pp_stmt pstmt {|var a int|};
+  [%expect
+    {|
+    (Stmt_long_var_decl (Long_decl_no_init (Type_int, ["a"]))) |}]
 ;;
 
 let%expect_test "stmt long single var decl no type" =

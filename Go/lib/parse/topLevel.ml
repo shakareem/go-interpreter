@@ -25,3 +25,9 @@ let parse_top_decl =
 let parse_file : file t = sep_by parse_stmt_sep parse_top_decl
 
 (**************************************** Tests ****************************************)
+
+let%expect_test "file with one var decl" =
+  pp pp_long_var_decl parse_long_var_decl {|var a int|};
+  [%expect {|
+    (Long_decl_no_init (Type_int, ["a"])) |}]
+;;
