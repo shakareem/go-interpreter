@@ -73,7 +73,8 @@ type expr =
   | Expr_un_oper of unary_oper * expr (** Unary operations such as [!z], [-f] *)
   | Expr_anon_func of anon_func (** See anon_func type *)
   | Expr_call of func_call (** See func_call type *)
-[@@deriving show { with_path = false }]
+  | Expr_chan_recieve of ident (** Channel recieve operation [<-c] *)
+  [@@deriving show { with_path = false }]
 
 (** An anonymous functions such as:
     [func() {}],
@@ -145,7 +146,6 @@ and stmt =
       [return], [return some_expr], [return expr1, expr2] *)
   | Stmt_block of block (** See block type *)
   | Stmt_chan_send of ident * expr (** Channel send operation [c <- true] *)
-  | Stmt_chan_recieve of ident * expr (** Channel recieve operation [z := <-c] *)
   | Stmt_call of func_call (** See func_call type *)
   | Stmt_defer of func_call (** See func_call type *)
   | Stmt_go of func_call (** See func_call type *)

@@ -105,10 +105,16 @@ let parse_anon_func pblock =
   >>| fun anon_func -> Expr_anon_func anon_func
 ;;
 
+let parse_chan_receive =
+  lift
+    (fun idt -> Expr_chan_recieve(idt))
+    (token "<-" *> parse_ident)
+;;
+
 let parse_expr =
   fix (fun pexpr ->
     let arg =
-      parens pexpr <|> parse_expr_func_call pexpr <|> parse_simple_expr (* <|> parse_anon_func pblock *)
+      parens pexpr <|> parse_expr_func_call pexpr <|> parse_chan_receive <|> parse_simple_expr (* <|> parse_anon_func pblock *)
     in  
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
@@ -234,6 +240,16 @@ let%expect_test "fac_piece2 test" =
 
 let%expect_test "unary_min test" =
   pp pp_expr parse_expr "-n + 2 + -1";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_sum,
+       (Expr_bin_oper (Bin_sum, (Expr_un_oper (Unary_minus, (Expr_ident "n"))),
+          (Expr_const (Const_int 2)))),
+       (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1))))))|}]
+;;
+
+let%expect_test "channel recieve test" =
+  pp pp_expr parse_expr "<-c + 1";
   [%expect
     {|
     (Expr_bin_oper (Bin_sum,

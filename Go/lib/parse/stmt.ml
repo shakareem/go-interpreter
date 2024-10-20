@@ -122,6 +122,13 @@ let parse_go =
   string "go" *> ws *> parse_func_call parse_expr >>| fun call -> Stmt_go call
 ;;
 
+let parse_chan_send =
+  lift2 
+    (fun idt expr -> Stmt_chan_send(idt, expr))
+    (ws *> parse_ident)
+    (token "<-" *> parse_expr)
+;;
+
 let parse_break = string "break" *> return Stmt_break
 let parse_continue = string "continue" *> return Stmt_continue
 
@@ -216,6 +223,7 @@ let parse_stmt pblock =
       ; parse_incr
       ; parse_decr
       ; parse_if pstmt pblock
+      ; parse_chan_send
       ; parse_break
       ; parse_continue
       ; parse_return
@@ -602,4 +610,12 @@ let%expect_test "stmt simple if" =
   pp pp_stmt pstmt {|if true {}|};
   [%expect {|
     : Incorrect statement |}]
+;;
+
+let%expect_test "chan send sttmt" =
+  pp pp_stmt pstmt {|c <- sum + 1|};
+  [%expect {|
+    (Stmt_chan_send ("c",
+       (Expr_bin_oper (Bin_sum, (Expr_ident "sum"), (Expr_const (Const_int 1))))
+       )) |}]
 ;;
