@@ -130,8 +130,7 @@ let parse_return =
   >>| fun expr_list -> Stmt_return expr_list
 ;;
 
-let is_valid_init stmt =
-  match stmt with
+let is_valid_init = function
   | Some (Stmt_short_var_decl _)
   | Some (Stmt_assign _)
   | Some (Stmt_incr _)
@@ -167,8 +166,46 @@ let parse_if pstmt pblock =
     return (Stmt_if { init; cond; if_body; else_body })
 ;;
 
+let parse_for pstmt pblock =
+  let parse_default_for =
+    let* init = pstmt >>| (fun stmt -> Some stmt) <|> return None in
+    let ok_init = if is_valid_init init then true else false in
+    let* _ = parse_stmt_sep in
+    let* cond = parse_expr >>| (fun expr -> Some expr) <|> return None in
+    let* _ = parse_stmt_sep in
+    let* post = pstmt >>| (fun stmt -> Some stmt) <|> return None in
+    let ok_post =
+      match post with
+      | Some (Stmt_short_var_decl _)
+      | Some (Stmt_assign _)
+      | Some (Stmt_incr _)
+      | Some (Stmt_decr _)
+      | Some (Stmt_call _)
+      | None -> true
+      | _ -> false
+    in
+    if ok_init && ok_post
+    then return (init, cond, post)
+    else fail "Incorrect statement in for initialization or post statemnent"
+  in
+  let parse_for_only_cond = parse_expr >>| fun cond -> None, Some cond, None in
+  let parse_for_range_n =
+    let* _ = string "range" *> ws in
+    let* expr = parse_expr in
+    return
+      ( Some (Stmt_short_var_decl (Short_decl_mult_init [ "i", Expr_const (Const_int 0) ]))
+      , Some (Expr_bin_oper (Bin_less, Expr_ident "i", expr))
+      , Some (Stmt_incr "i") )
+  in
+  let* _ = string "for" *> ws in
+  let* init, cond, post =
+    choice [ parse_default_for; parse_for_only_cond; parse_for_range_n ]
+  in
+  let* body = ws_line *> pblock in
+  return (Stmt_for { init; cond; post; body })
+;;
+
 (* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]
-   let parse_for = return ()
    let parse_range = return () *)
 
 let parse_stmt pblock =
@@ -187,10 +224,11 @@ let parse_stmt pblock =
       ; parse_defer
       ; parse_go
       ; (pblock >>| fun block -> Stmt_block block)
-        (*  ; parse_for
-            ; parse_range
-            ; parse_chan_send
-            ; parse_chan_receive *)
+      ; parse_for pstmt pblock
+        (*
+           ; parse_range
+           ; parse_chan_send
+           ; parse_chan_receive *)
       ]
       ~failure_msg:"Incorrect statement")
 ;;
@@ -356,8 +394,7 @@ let%expect_test "stmt assign mult unequal lvalues and rvalues" =
 
 let%expect_test "stmt long single var decl without init" =
   pp pp_stmt pstmt {|var a int|};
-  [%expect
-    {|
+  [%expect {|
     (Stmt_long_var_decl (Long_decl_no_init (Type_int, ["a"]))) |}]
 ;;
 
