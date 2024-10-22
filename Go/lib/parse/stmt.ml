@@ -149,20 +149,21 @@ let is_valid_init = function
 
 let parse_if pstmt pblock =
   let* _ = string "if" *> ws in
-  let* init = pstmt <* parse_stmt_sep >>| (fun init -> Some init) <|> return None in
+  let* init = pstmt >>| (fun init -> Some init) <|> return None in
   if not (is_valid_init init)
   then fail "Incorrect statement in if initialization"
   else
-    let* cond = ws *> parse_expr <* ws_line in
-    let* if_body = pblock <* ws_line in
+    let* _ = parse_stmt_sep <|> return () in
+    let* cond = ws *> parse_expr in
+    let* if_body = ws_line *> pblock <* ws_line in
     let* else_body =
       let* else_body_exists = string "else" *> ws *> return true <|> return false in
-      let* else_body = pstmt in
       if else_body_exists
-      then (
+      then
+        let* else_body = pstmt in
         match else_body with
         | Stmt_if _ | Stmt_block _ -> return (Some else_body)
-        | _ -> fail "Only block or if statement can be used after else")
+        | _ -> fail "Only block or if statement can be used after else"
       else return None
       (* *> (parse_if pstmt pblock
          >>| (fun if_stmt -> Some if_stmt)
@@ -637,12 +638,6 @@ let%expect_test "stmt block of mult stmts, separated by newlines" =
          (Stmt_go ((Expr_ident "get_int"), [(Expr_ident "hi")]))]) |}]
 ;;
 
-let%expect_test "stmt simple if" =
-  pp pp_stmt pstmt {|if true {}|};
-  [%expect {|
-    : Incorrect statement |}]
-;;
-
 let%expect_test "chan send sttmt" =
   pp pp_stmt pstmt {|c <- sum + 1|};
   [%expect
@@ -650,6 +645,62 @@ let%expect_test "chan send sttmt" =
     (Stmt_chan_send ("c",
        (Expr_bin_oper (Bin_sum, (Expr_ident "sum"), (Expr_const (Const_int 1))))
        )) |}]
+;;
+
+let%expect_test "stmt simple if" =
+  pp pp_stmt pstmt {|if true {}|};
+  [%expect
+    {|
+    Stmt_if {init = None; cond = (Expr_ident "true"); if_body = [];
+      else_body = None} |}]
+;;
+
+let%expect_test "stmt if with init" =
+  pp pp_stmt pstmt {|if k := 0; k == test {}|};
+  [%expect
+    {|
+    Stmt_if {
+      init =
+      (Some (Stmt_short_var_decl
+               (Short_decl_mult_init [("k", (Expr_const (Const_int 0)))])));
+      cond = (Expr_bin_oper (Bin_equal, (Expr_ident "k"), (Expr_ident "test")));
+      if_body = []; else_body = None} |}]
+;;
+
+let%expect_test "stmt if with empty init" =
+  pp pp_stmt pstmt {|if ; call() {}|};
+  [%expect
+    {|
+    Stmt_if {init = None; cond = (Expr_call ((Expr_ident "call"), []));
+      if_body = []; else_body = None} |}]
+;;
+
+let%expect_test "stmt if with wrong init" =
+  pp pp_stmt pstmt {|if var a = 5; cond {}|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt if with else that is a block" =
+  pp pp_stmt pstmt {|if cond {} else {}|};
+  [%expect {|
+    Stmt_if {init = None; cond = (Expr_ident "cond"); if_body = [];
+      else_body = (Some (Stmt_block []))} |}]
+;;
+
+let%expect_test "stmt if with else that is another if" =
+  pp pp_stmt pstmt {|if cond {} else if cond2 {}|};
+  [%expect {|
+    Stmt_if {init = None; cond = (Expr_ident "cond"); if_body = [];
+      else_body =
+      (Some Stmt_if {init = None; cond = (Expr_ident "cond2"); if_body = [];
+              else_body = None})} |}]
+;;
+
+let%expect_test "stmt if with wrong else" =
+  pp pp_stmt pstmt {|if cond {} else do_smth()|};
+  [%expect {|
+    : Incorrect statement |}]
 ;;
 
 let%expect_test "stmt empty for" =
