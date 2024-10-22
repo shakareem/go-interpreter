@@ -180,7 +180,12 @@ let parse_for pstmt pblock =
     let* _ = parse_stmt_sep in
     let* cond = parse_expr >>| (fun expr -> Some expr) <|> return None in
     let* _ = parse_stmt_sep in
-    let* post = pstmt >>| (fun stmt -> Some stmt) <|> return None in
+    let* post =
+      let* next_char = peek_char_fail in
+      match next_char with
+      | '{' -> return None
+      | _ -> pstmt >>| fun stmt -> Some stmt
+    in
     let ok_post =
       match post with
       | Some (Stmt_short_var_decl _)
@@ -195,7 +200,12 @@ let parse_for pstmt pblock =
     then return (init, cond, post)
     else fail "Incorrect statement in for initialization or post statemnent"
   in
-  let parse_for_only_cond = parse_expr >>| fun cond -> None, Some cond, None in
+  let parse_for_only_cond =
+    let* next_char = peek_char_fail in
+    match next_char with
+    | '{' -> return (None, None, None)
+    | _ -> parse_expr >>| fun cond -> None, Some cond, None
+  in
   let parse_for_range_n =
     let* _ = string "range" *> ws in
     let* expr = parse_expr in
@@ -243,7 +253,13 @@ let parse_stmt pblock =
 
 let parse_block : block t =
   fix (fun pblock ->
-    char '{' *> ws *> sep_by parse_stmt_sep (parse_stmt pblock) <* ws <* char '}')
+    char '{'
+    *> skip_many (ws *> parse_stmt_sep *> ws)
+    *> ws
+    *> sep_by (many1 parse_stmt_sep) (parse_stmt pblock)
+    <* skip_many (ws *> parse_stmt_sep *> ws)
+    <* ws
+    <* char '}')
 ;;
 
 (**************************************** Tests ****************************************)
@@ -634,4 +650,55 @@ let%expect_test "chan send sttmt" =
     (Stmt_chan_send ("c",
        (Expr_bin_oper (Bin_sum, (Expr_ident "sum"), (Expr_const (Const_int 1))))
        )) |}]
+;;
+
+let%expect_test "stmt empty for" =
+  pp pp_stmt pstmt {|for {}|};
+  [%expect {|
+    Stmt_for {init = None; cond = None; post = None; body = []} |}]
+;;
+
+let%expect_test "stmt for with only conition" =
+  pp pp_stmt pstmt {|for a > 0 {}|};
+  [%expect
+    {|
+    Stmt_for {init = None;
+      cond =
+      (Some (Expr_bin_oper (Bin_greater, (Expr_ident "a"),
+               (Expr_const (Const_int 0)))));
+      post = None; body = []} |}]
+;;
+
+let%expect_test "stmt empty for with semicolons" =
+  pp pp_stmt pstmt {|for ;; {}|};
+  [%expect {|
+    Stmt_for {init = None; cond = None; post = None; body = []} |}]
+;;
+
+let%expect_test "stmt simple for" =
+  pp pp_stmt pstmt {|for i := 0; i < 10; i++ {}|};
+  [%expect
+    {|
+    Stmt_for {
+      init =
+      (Some (Stmt_short_var_decl
+               (Short_decl_mult_init [("i", (Expr_const (Const_int 0)))])));
+      cond =
+      (Some (Expr_bin_oper (Bin_less, (Expr_ident "i"),
+               (Expr_const (Const_int 10)))));
+      post = (Some (Stmt_incr "i")); body = []} |}]
+;;
+
+let%expect_test "stmt for with range and number" =
+  pp pp_stmt pstmt {|for range 10 {}|};
+  [%expect
+    {|
+    Stmt_for {
+      init =
+      (Some (Stmt_short_var_decl
+               (Short_decl_mult_init [("i", (Expr_const (Const_int 0)))])));
+      cond =
+      (Some (Expr_bin_oper (Bin_less, (Expr_ident "i"),
+               (Expr_const (Const_int 10)))));
+      post = (Some (Stmt_incr "i")); body = []} |}]
 ;;
