@@ -123,8 +123,8 @@ let parse_go =
 ;;
 
 let parse_chan_send =
-  lift2 
-    (fun idt expr -> Stmt_chan_send(idt, expr))
+  lift2
+    (fun idt expr -> Stmt_chan_send (idt, expr))
     (ws *> parse_ident)
     (token "<-" *> parse_expr)
 ;;
@@ -322,7 +322,8 @@ let%expect_test "return with multiple exprs and ws" =
 (* не работает из-за экспрешенов *)
 let%expect_test "return with multiple complex exprs" =
   pp pp_stmt pstmt {|return -5 * _r + 8, !a && (b || c)|};
-  [%expect {|
+  [%expect
+    {|
     (Stmt_return
        [(Expr_bin_oper (Bin_sum,
            (Expr_bin_oper (Bin_multiply,
@@ -453,7 +454,21 @@ let%expect_test "stmt long mult var decl with type" =
 (* нет константных массивов *)
 let%expect_test "stmt long mult var decl with type" =
   pp pp_stmt pstmt {|var a, b, c [2]int = [2]int{1, 2}, [2]int{}, [2]int{10, 20}|};
-  [%expect {| : Incorrect statement |}]
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init ((Some (Type_array (Type_int, 2))),
+          [("a",
+            (Expr_array (Type_int,
+               [(Expr_const (Const_int 1)); (Expr_const (Const_int 2))])));
+            ("b",
+             (Expr_array (Type_int,
+                [(Expr_const (Const_int 0)); (Expr_const (Const_int 0))])));
+            ("c",
+             (Expr_array (Type_int,
+                [(Expr_const (Const_int 10)); (Expr_const (Const_int 20))])))
+            ]
+          ))) |}]
 ;;
 
 let%expect_test "stmt long single var decl with type" =
@@ -614,7 +629,8 @@ let%expect_test "stmt simple if" =
 
 let%expect_test "chan send sttmt" =
   pp pp_stmt pstmt {|c <- sum + 1|};
-  [%expect {|
+  [%expect
+    {|
     (Stmt_chan_send ("c",
        (Expr_bin_oper (Bin_sum, (Expr_ident "sum"), (Expr_const (Const_int 1))))
        )) |}]

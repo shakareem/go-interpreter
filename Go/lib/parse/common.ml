@@ -65,7 +65,7 @@ let parse_const_string =
   char '"' *> parse_string <* char '"'
 ;;
 
-(* TODO: add const array *)
+(* TODO: add const*)
 let parse_const = parse_const_int <|> parse_const_string
 
 let parse_ident =
@@ -92,14 +92,27 @@ let parse_ident_not_blank =
   | _ -> return ident
 ;;
 
-(* TODO: add arrays and functions *)
-let parse_type =
+let parse_simple_type =
   choice
     [ string "int" *> return Type_int
     ; string "string" *> return Type_string
     ; string "bool" *> return Type_bool
     ]
     ~failure_msg:"Invalid type"
+;;
+
+(* TODO: add arrays and functions *)
+let parse_type =
+  fix (fun type' ->
+    let parse_array_type =
+      lift2
+        (fun size type' -> Type_array (type', size))
+        (square_brackets parse_int)
+        (ws *> type')
+    in
+    let arg = parse_array_type <|> parse_simple_type in
+    let arg = fix (fun _ -> arg) <|> arg in
+    arg)
 ;;
 
 (**************************************** Tests ****************************************)
@@ -128,14 +141,14 @@ let%expect_test "very big int" =
   (* CR expect_test_collector: This test expectation appears to contain a backtrace.
      This is strongly discouraged as backtraces are fragile.
      Please change this test to not include a backtrace. *)
-
+      
   (Failure "Int.of_string: \"9999999999999999999999999999999999999999\"")
   Raised at Stdlib.failwith in file "stdlib.ml", line 29, characters 17-33
   Called from Parse__Common.parse_const_int.(fun) in file "lib/parse/common.ml", line 60, characters 53-72
   Called from Angstrom__Parser.Monad.(>>|).(fun).succ' in file "lib/parser.ml", line 64, characters 61-66
   Called from Angstrom__Parser.parse_bigstring in file "lib/parser.ml", line 43, characters 52-93
   Called from Parse__Common.pp in file "lib/parse/common.ml", line 10, characters 8-70
-  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 124, characters 2-70
+  Called from Parse__Common.(fun) in file "lib/parse/common.ml", line 137, characters 2-70
   Called from Expect_test_collector.Make.Instance_io.exec in file "collector/expect_test_collector.ml", line 234, characters 12-19 |}]
 ;;
 
@@ -207,7 +220,7 @@ let%expect_test "type string" =
 (* bug *)
 let%expect_test "type array of arrays" =
   pp pp_type' parse_type {|[4][0]string|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_array ((Type_array (Type_string, 0)), 4)) |}]
 ;;
 
 (* bug *)
@@ -265,6 +278,87 @@ let%expect_test "type func that gets func and returns func" =
 ;;
 
 (* bug *)
+let%expect_test "type func that returns func that returns func..." =
+  pp pp_type' parse_type {|func() func() func() func() func() func()|};
+  [%expect {| : Invalid type |}]
+;;
+
+let%expect_test "type int" =
+  pp pp_type' parse_type {|int|};
+  [%expect {| Type_int |}]
+;;
+
+let%expect_test "type bool" =
+  pp pp_type' parse_type {|bool|};
+  [%expect {| Type_bool |}]
+;;
+
+let%expect_test "type string" =
+  pp pp_type' parse_type {|string|};
+  [%expect {| Type_string |}]
+;;
+
+(* bug *)
+let%expect_test "type array of arrays" =
+  pp pp_type' parse_type {|[4][0]string|};
+  [%expect {| (Type_array ((Type_array (Type_string, 0)), 4)) |}]
+;;
+
+(* bug *)
+let%expect_test "type array of functions" =
+  pp pp_type' parse_type {|[4]func()|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type simple func" =
+  pp pp_type' parse_type {|func()|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type simple func with brackets" =
+  pp pp_type' parse_type {|func()()|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type simple func with brackets and ws" =
+  pp pp_type' parse_type {|func()  /* some comment */  ()|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type func with one arg and without returns" =
+  pp pp_type' parse_type {|func(int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type func with mult args and without returns" =
+  pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type func with one return" =
+  pp pp_type' parse_type {|func() int|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type func with multiple returns" =
+  pp pp_type' parse_type {|func() (int, string)|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* bug *)
+let%expect_test "type func that gets func and returns func" =
+  pp pp_type' parse_type {|func(func(int) string) func([4][5]int)|};
+  [%expect {| : Invalid type |}]
+;;
+
+(* barray_ug *)
 let%expect_test "type func that returns func that returns func..." =
   pp pp_type' parse_type {|func() func() func() func() func() func()|};
   [%expect {| : Invalid type |}]
