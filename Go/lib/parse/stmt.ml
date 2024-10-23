@@ -26,7 +26,9 @@ let parse_long_var_decl pblock =
   if not with_init
   then (
     match vars_type with
-    | Some t -> return (Long_decl_no_init (t, lvalues))
+    | Some t ->
+      let rvalues = List.init (List.length lvalues) ~f:(fun _ -> default_init t) in
+      return (Long_decl_mult_init (Some t, combine_lists lvalues rvalues))
     | None -> fail "Long variable declaration without initializers should have type")
   else
     let* rvalues = parse_rvalues pblock in
@@ -299,7 +301,8 @@ let%expect_test "empty anon func" =
 
 let%expect_test "anon func with one arg and one return value" =
   pp pp_expr pexpr {|func(a int) int { return a }|};
-  [%expect {|
+  [%expect
+    {|
     (Expr_const
        (Const_func
           { args = [("a", Type_int)]; returns = (Some (Only_types [Type_int]));
@@ -308,7 +311,8 @@ let%expect_test "anon func with one arg and one return value" =
 
 let%expect_test "anon func with mult args and return values" =
   pp pp_expr pexpr {|func(a int, b string) (int, string) { return a, b }|};
-  [%expect {|
+  [%expect
+    {|
     (Expr_const
        (Const_func
           { args = [("a", Type_int); ("b", Type_string)];
@@ -321,7 +325,8 @@ let%expect_test "anon func with mult args and named return values" =
     pp_expr
     pexpr
     {|func(a int, b string) (res1 int, res2 string) { res1, res2 = a, b; return }|};
-  [%expect {|
+  [%expect
+    {|
     (Expr_const
        (Const_func
           { args = [("a", Type_int); ("b", Type_string)];
@@ -544,9 +549,54 @@ let%expect_test "stmt assign mult unequal lvalues and rvalues" =
 (********** long var decl **********)
 
 let%expect_test "stmt long single var decl without init" =
-  pp pp_stmt pstmt {|var a int|};
-  [%expect {|
-    (Stmt_long_var_decl (Long_decl_no_init (Type_int, ["a"]))) |}]
+  pp pp_stmt pstmt {|var a string|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init ((Some Type_string),
+          [("a", (Expr_const (Const_string "")))]))) |}]
+;;
+
+let%expect_test "stmt long single var decl without init with mult array type" =
+  pp pp_stmt pstmt {|var a [2][3][1]bool|};
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init (
+          (Some (Type_array ((Type_array ((Type_array (Type_bool, 1)), 3)), 2))),
+          [("a",
+            (Expr_const
+               (Const_array ((Type_array ((Type_array (Type_bool, 1)), 3)),
+                  [(Expr_const
+                      (Const_array ((Type_array (Type_bool, 1)),
+                         [(Expr_const
+                             (Const_array (Type_bool,
+                                [(Expr_const (Const_bool false))])));
+                           (Expr_const
+                              (Const_array (Type_bool,
+                                 [(Expr_const (Const_bool false))])));
+                           (Expr_const
+                              (Const_array (Type_bool,
+                                 [(Expr_const (Const_bool false))])))
+                           ]
+                         )));
+                    (Expr_const
+                       (Const_array ((Type_array (Type_bool, 1)),
+                          [(Expr_const
+                              (Const_array (Type_bool,
+                                 [(Expr_const (Const_bool false))])));
+                            (Expr_const
+                               (Const_array (Type_bool,
+                                  [(Expr_const (Const_bool false))])));
+                            (Expr_const
+                               (Const_array (Type_bool,
+                                  [(Expr_const (Const_bool false))])))
+                            ]
+                          )))
+                    ]
+                  ))))
+            ]
+          ))) |}]
 ;;
 
 let%expect_test "stmt long single var decl no type" =

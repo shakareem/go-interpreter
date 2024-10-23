@@ -75,6 +75,7 @@ and const =
       no initializers, array will be filled with default values
       ([0] for int, [""] for string and [false] for bool arrays) *)
   | Const_func of anon_func (** See anon_func type *)
+  | Const_nil (** nil *)
 [@@deriving show { with_path = false }]
 
 (** An anonymous functions such as:
@@ -164,7 +165,9 @@ and long_var_decl =
   (** Declarations with initializer for each identifier such as:
       [var my_func func() = func() {}],
       [var a, b int = 1, 2],
-      [var a, b = 1 + 2, "3"].
+      [var a, b = 1 + 2, "3"]
+      And declarations without initialization such as [var my_int1, my_int2 int],
+      where variables will be initialized with default values at parsing.
       Invariant: size of the list is >= 1 *)
   | Long_decl_one_init of type' option * ident list * expr
   (** Declarations with one initializer that is a function call

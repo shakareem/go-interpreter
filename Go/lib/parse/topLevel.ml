@@ -34,14 +34,20 @@ let%expect_test "file with one var decl with ws" =
 
 |};
   [%expect {|
-    [(Decl_var (Long_decl_no_init (Type_int, ["a"])))] |}]
+    [(Decl_var
+        (Long_decl_mult_init ((Some Type_int),
+           [("a", (Expr_const (Const_int 0)))])))
+      ] |}]
 ;;
 
 let%expect_test "file with multiple var decls separated by semicolon" =
   pp pp_file parse_file {|var a, b int;var c = "hello"|};
   [%expect
     {|
-    [(Decl_var (Long_decl_no_init (Type_int, ["a"; "b"])));
+    [(Decl_var
+        (Long_decl_mult_init ((Some Type_int),
+           [("a", (Expr_const (Const_int 0))); ("b", (Expr_const (Const_int 0)))]
+           )));
       (Decl_var
          (Long_decl_mult_init (None, [("c", (Expr_const (Const_string "hello")))]
             )))
@@ -141,7 +147,9 @@ go println(id(10))
          ("id",
           { args = [("a", Type_int)]; returns = (Some (Only_types [Type_int]));
             body = [(Stmt_return [(Expr_ident "a")])] }));
-      (Decl_var (Long_decl_no_init (Type_int, ["f"])));
+      (Decl_var
+         (Long_decl_mult_init ((Some Type_int),
+            [("f", (Expr_const (Const_int 0)))])));
       (Decl_func
          ("main",
           { args = []; returns = None;
