@@ -199,7 +199,7 @@ let parse_for pstmt pblock =
     in
     if ok_init && ok_post
     then return (init, cond, post)
-    else fail "Incorrect statement in for initialization or post statemnent"
+    else fail "Incorrect statement in for initialization or post statement"
   in
   let parse_for_only_cond =
     let* next_char = peek_char_fail in
@@ -223,8 +223,30 @@ let parse_for pstmt pblock =
   return (Stmt_for { init; cond; post; body })
 ;;
 
-(* можно парсить [for range 1000] как [for i := 0; i < 1000; i++]
-   let parse_range = return () *)
+let parse_range pblock =
+  let* _ = string "for" *> ws in
+  let* idents = sep_by1 (ws_line *> char ',' *> ws) parse_ident in
+  if List.length idents > 2
+  then fail "for with range stmt can have no more than two identifiers"
+  else (
+    let index, element =
+      match idents with
+      | first :: second :: _ -> first, Some second
+      | first :: _ -> first, None
+      | [] -> assert false
+    in
+    let* is_with_decl =
+      ws_line
+      *> (string ":=" *> return true
+          <|> string "=" *> return false
+          <|> fail "Assignment or declaration missed in for with range stmt")
+    in
+    let* array = ws *> string "range" *> ws *> parse_expr in
+    let* body = ws_line *> pblock in
+    if is_with_decl
+    then return (Stmt_range (Range_decl { index; element; array; body }))
+    else return (Stmt_range (Range_assign { index; element; array; body })))
+;;
 
 let parse_stmt pblock =
   fix (fun pstmt ->
@@ -244,10 +266,7 @@ let parse_stmt pblock =
       ; parse_go
       ; (pblock >>| fun block -> Stmt_block block)
       ; parse_for pstmt pblock
-        (*
-           ; parse_range
-           ; parse_chan_send
-           ; parse_chan_receive *)
+      ; parse_range pblock
       ]
       ~failure_msg:"Incorrect statement")
 ;;
@@ -267,6 +286,8 @@ let parse_block : block t =
 
 let pstmt = parse_stmt parse_block (* for tests *)
 
+(********** break, continue, go, defer and channel send **********)
+
 let%expect_test "break stmt" =
   pp pp_stmt pstmt {|break|};
   [%expect {| Stmt_break |}]
@@ -276,6 +297,43 @@ let%expect_test "continue stmt" =
   pp pp_stmt pstmt {|continue|};
   [%expect {| Stmt_continue |}]
 ;;
+
+let%expect_test "stmt defer with func" =
+  pp pp_stmt pstmt {|defer 
+                      call(abc)|};
+  [%expect {|
+    (Stmt_defer ((Expr_ident "call"), [(Expr_ident "abc")])) |}]
+;;
+
+let%expect_test "stmt defer with expr that is not a func" =
+  pp pp_stmt pstmt {|defer 2 + 2 * 5|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "stmt go with func" =
+  pp pp_stmt pstmt {|go 
+                      call(abc)|};
+  [%expect {|
+    (Stmt_go ((Expr_ident "call"), [(Expr_ident "abc")])) |}]
+;;
+
+let%expect_test "stmt go with expr that is not a func" =
+  pp pp_stmt pstmt {|go 2 + 2 * 5|};
+  [%expect {|
+    : Incorrect statement |}]
+;;
+
+let%expect_test "chan send sttmt" =
+  pp pp_stmt pstmt {|c <- sum + 1|};
+  [%expect
+    {|
+    (Stmt_chan_send ("c",
+       (Expr_bin_oper (Bin_sum, (Expr_ident "sum"), (Expr_const (Const_int 1))))
+       )) |}]
+;;
+
+(********** incr and decr **********)
 
 let%expect_test "incr stmt" =
   pp pp_stmt pstmt {|a++|};
@@ -307,6 +365,8 @@ let%expect_test "decr stmt with blank ident" =
   [%expect {| : Incorrect statement |}]
 ;;
 
+(********** return **********)
+
 let%expect_test "return without anything" =
   pp pp_stmt pstmt {|return|};
   [%expect {| (Stmt_return []) |}]
@@ -336,7 +396,6 @@ let%expect_test "return with multiple exprs and ws" =
          (Expr_ident "nil")]) |}]
 ;;
 
-(* не работает из-за экспрешенов *)
 let%expect_test "return with multiple complex exprs" =
   pp pp_stmt pstmt {|return -5 * _r + 8, !a && (b || c)|};
   [%expect
@@ -351,6 +410,8 @@ let%expect_test "return with multiple complex exprs" =
             (Expr_bin_oper (Bin_or, (Expr_ident "b"), (Expr_ident "c")))))
          ]) |}]
 ;;
+
+(********** func call **********)
 
 let%expect_test "stmt func call with one simple arg" =
   pp pp_stmt pstmt {|my_func(5)|};
@@ -384,6 +445,8 @@ let%expect_test "stmt func call with complex expressions and comments" =
              (Expr_const (Const_int 75))));
           (Expr_un_oper (Unary_not, (Expr_ident "a")))])) |}]
 ;;
+
+(********** assign **********)
 
 let%expect_test "stmt assign one lvalue, one rvalue" =
   pp pp_stmt pstmt {|a = 5|};
@@ -427,6 +490,8 @@ let%expect_test "stmt assign mult unequal lvalues and rvalues" =
   [%expect {| : Incorrect statement |}]
 ;;
 
+(********** long var decl **********)
+
 let%expect_test "stmt long single var decl without init" =
   pp pp_stmt pstmt {|var a int|};
   [%expect {|
@@ -468,7 +533,6 @@ let%expect_test "stmt long mult var decl with type" =
           ))) |}]
 ;;
 
-(* нет константных массивов *)
 let%expect_test "stmt long mult var decl with type" =
   pp pp_stmt pstmt {|var a, b, c [2]int = [2]int{1, 2}, [2]int{}, [2]int{10, 20}|};
   [%expect
@@ -488,7 +552,7 @@ let%expect_test "stmt long mult var decl with type" =
           ))) |}]
 ;;
 
-let%expect_test "stmt long single var decl with type" =
+let%expect_test "stmt long mult var decl without type" =
   pp pp_stmt pstmt {|var a, b, c = 5, nil, "hi"|};
   [%expect
     {|
@@ -523,6 +587,8 @@ let%expect_test "stmt long var decl unequal lvalues and rvalues" =
   [%expect {|
     : Incorrect statement |}]
 ;;
+
+(********** short var decl **********)
 
 let%expect_test "stmt short single var decl" =
   pp pp_stmt pstmt {|a := 7|};
@@ -569,32 +635,6 @@ let%expect_test "stmt short var decl unequal lvalues and rvalues" =
     : Incorrect statement |}]
 ;;
 
-let%expect_test "stmt defer with func" =
-  pp pp_stmt pstmt {|defer 
-                      call(abc)|};
-  [%expect {|
-    (Stmt_defer ((Expr_ident "call"), [(Expr_ident "abc")])) |}]
-;;
-
-let%expect_test "stmt defer with expr that is not a func" =
-  pp pp_stmt pstmt {|defer 2 + 2 * 5|};
-  [%expect {|
-    : Incorrect statement |}]
-;;
-
-let%expect_test "stmt go with func" =
-  pp pp_stmt pstmt {|go 
-                      call(abc)|};
-  [%expect {|
-    (Stmt_go ((Expr_ident "call"), [(Expr_ident "abc")])) |}]
-;;
-
-let%expect_test "stmt go with expr that is not a func" =
-  pp pp_stmt pstmt {|go 2 + 2 * 5|};
-  [%expect {|
-    : Incorrect statement |}]
-;;
-
 let%expect_test "stmt empty block" =
   pp pp_stmt pstmt {|{}|};
   [%expect {|
@@ -622,6 +662,8 @@ let%expect_test "stmt block of mult stmts, separated by semicolon" =
          (Stmt_call ((Expr_ident "println"), [(Expr_ident "a")]))]) |}]
 ;;
 
+(********** block **********)
+
 let%expect_test "stmt block of mult stmts, separated by newlines" =
   pp
     pp_stmt
@@ -638,14 +680,7 @@ let%expect_test "stmt block of mult stmts, separated by newlines" =
          (Stmt_go ((Expr_ident "get_int"), [(Expr_ident "hi")]))]) |}]
 ;;
 
-let%expect_test "chan send sttmt" =
-  pp pp_stmt pstmt {|c <- sum + 1|};
-  [%expect
-    {|
-    (Stmt_chan_send ("c",
-       (Expr_bin_oper (Bin_sum, (Expr_ident "sum"), (Expr_const (Const_int 1))))
-       )) |}]
-;;
+(********** if **********)
 
 let%expect_test "stmt simple if" =
   pp pp_stmt pstmt {|if true {}|};
@@ -683,14 +718,16 @@ let%expect_test "stmt if with wrong init" =
 
 let%expect_test "stmt if with else that is a block" =
   pp pp_stmt pstmt {|if cond {} else {}|};
-  [%expect {|
+  [%expect
+    {|
     Stmt_if {init = None; cond = (Expr_ident "cond"); if_body = [];
       else_body = (Some (Stmt_block []))} |}]
 ;;
 
 let%expect_test "stmt if with else that is another if" =
   pp pp_stmt pstmt {|if cond {} else if cond2 {}|};
-  [%expect {|
+  [%expect
+    {|
     Stmt_if {init = None; cond = (Expr_ident "cond"); if_body = [];
       else_body =
       (Some Stmt_if {init = None; cond = (Expr_ident "cond2"); if_body = [];
@@ -702,6 +739,8 @@ let%expect_test "stmt if with wrong else" =
   [%expect {|
     : Incorrect statement |}]
 ;;
+
+(********** for **********)
 
 let%expect_test "stmt empty for" =
   pp pp_stmt pstmt {|for {}|};
@@ -752,4 +791,81 @@ let%expect_test "stmt for with range and number" =
       (Some (Expr_bin_oper (Bin_less, (Expr_ident "i"),
                (Expr_const (Const_int 10)))));
       post = (Some (Stmt_incr "i")); body = []} |}]
+;;
+
+(********** range **********)
+
+let%expect_test "stmt range with decl only index" =
+  pp pp_stmt pstmt {|for i := range array {}|};
+  [%expect
+    {|
+    (Stmt_range
+       Range_decl {index = "i"; element = None; array = (Expr_ident "array");
+         body = []}) |}]
+;;
+
+let%expect_test "stmt range with decl index and elem" =
+  pp pp_stmt pstmt {|for i, elem := range array {}|};
+  [%expect
+    {|
+    (Stmt_range
+       Range_decl {index = "i"; element = (Some "elem");
+         array = (Expr_ident "array"); body = []}) |}]
+;;
+
+let%expect_test "stmt range with decl blank index and elem" =
+  pp pp_stmt pstmt {|for _, _ := range array {}|};
+  [%expect
+    {|
+    (Stmt_range
+       Range_decl {index = "_"; element = (Some "_");
+         array = (Expr_ident "array"); body = []}) |}]
+;;
+
+let%expect_test "stmt range with assign only index" =
+  pp pp_stmt pstmt {|for i = range array {}|};
+  [%expect {|
+    (Stmt_range
+       Range_assign {index = "i"; element = None; array = (Expr_ident "array");
+         body = []}) |}]
+;;
+
+let%expect_test "stmt range with assign index and elem" =
+  pp pp_stmt pstmt {|for i, elem = range array {}|};
+  [%expect {|
+    (Stmt_range
+       Range_assign {index = "i"; element = (Some "elem");
+         array = (Expr_ident "array"); body = []}) |}]
+;;
+
+let%expect_test "stmt range with assign blank index and elem" =
+  pp pp_stmt pstmt {|for _, _ = range array {}|};
+  [%expect {|
+    (Stmt_range
+       Range_assign {index = "_"; element = (Some "_");
+         array = (Expr_ident "array"); body = []}) |}]
+;;
+
+let%expect_test "stmt range with more than two idents" =
+  pp pp_stmt pstmt {|for a, b, c, d = range array {}|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt range without idents" =
+  pp pp_stmt pstmt {|for := range array {}|};
+  [%expect {| : Incorrect statement |}]
+;;
+
+let%expect_test "stmt range with const array" =
+  pp pp_stmt pstmt {|for i, elem := range [3]int{1, 2, 3} {}|};
+  [%expect
+    {|
+    (Stmt_range
+       Range_decl {index = "i"; element = (Some "elem");
+         array =
+         (Expr_array (Type_int,
+            [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+              (Expr_const (Const_int 3))]
+            ));
+         body = []}) |}]
 ;;

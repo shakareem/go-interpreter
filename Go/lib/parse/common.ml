@@ -114,6 +114,8 @@ let parse_type =
 
 (**************************************** Tests ****************************************)
 
+(********** const **********)
+
 let%expect_test "const int" =
   pp pp_const parse_const {|256|};
   [%expect {| (Const_int 256) |}]

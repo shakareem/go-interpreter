@@ -130,16 +130,7 @@ and stmt =
   (** A for statement such as:
       [for i := 0; i < n; i++ { do() }],
       [for range 1000 { a++ ; println(a) }] *)
-  | Stmt_range of
-      { index : ident
-      ; element : ident option
-      ; array : expr
-      ; body : block
-      }
-  (** For with range statement such as:
-      [for i, elem := range array {
-          check(elem)
-      }] *)
+  | Stmt_range of range (** See range type *)
   | Stmt_break (** Break statement: [break] *)
   | Stmt_continue (** Continue statement: [continue] *)
   | Stmt_return of expr list
@@ -191,6 +182,27 @@ and short_var_decl =
   (** Declarations with one initializer that is a function call
       for multiple identifiers such as [a, b := get_two()].
       Invariant: size of the list is >= 1 *)
+[@@deriving show { with_path = false }]
+
+(** For with range statement *)
+and range =
+  | Range_decl of
+      { index : ident
+      ; element : ident option
+      ; array : expr
+      ; body : block
+      }
+  (** For with range statement with declaration of index and element variables such as:
+      [for i, elem := range array { check(elem) }] *)
+  | Range_assign of
+      { index : ident
+      ; element : ident option
+      ; array : expr
+      ; body : block
+      }
+  (** For with range statement with assigment of index and element variables such as:
+      [for i, elem = range array { check(elem) }] *)
+[@@deriving show { with_path = false }]
 
 (** Function declarations such as:
     [func sum_and_diff(a, b int) (sum, diff int) {
