@@ -52,25 +52,29 @@ let pelse =
 let peand = token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1, exp2))
 let peor = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
 
-let parse_simple_expr =
-  parse_ident_not_blank
-  >>| (fun id -> Expr_ident id)
-  <|> (parse_const >>| fun const -> Expr_const const)
-;;
-
 let parse_func_call pexpr : func_call t =
   let* func_name = ws *> parse_ident <* ws_line in
-  let* args = parens (sep_by (ws_line *> char ',' *> ws) pexpr) in
+  let* args = parens (sep_by_comma pexpr) in
   return (Expr_ident func_name, args)
 ;;
 
 let parse_expr_func_call pexpr = parse_func_call pexpr >>| fun call -> Expr_call call
 
+let parse_chan_receive =
+  lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
+;;
+
+let parse_const_int = parse_int >>| fun num -> Const_int num
+
+let parse_const_string =
+  let parse_string = take_till (Char.equal '"') >>| fun str -> Const_string str in
+  char '"' *> parse_string <* char '"'
+;;
+
 let parse_idents_with_types =
   let* args_lists =
-    sep_by1
-      (ws_line *> char ',' *> ws)
-      (let* idents = sep_by1 (ws_line *> char ',' *> ws) parse_ident in
+    sep_by_comma1
+      (let* idents = sep_by_comma1 parse_ident in
        let* t = ws_line *> parse_type in
        return (List.map ~f:(fun id -> id, t) idents))
   in
@@ -82,8 +86,7 @@ let parse_func_args = parens parse_idents_with_types <|> (parens ws >>| fun _ ->
 let parse_func_return_values =
   choice
     [ (parens parse_idents_with_types >>| fun returns -> Some (Ident_and_types returns))
-    ; (parens (sep_by1 (ws_line *> char ',' *> ws) parse_type)
-       >>| fun types -> Some (Only_types types))
+    ; (parens (sep_by_comma1 parse_type) >>| fun types -> Some (Only_types types))
     ; (parse_type >>| fun t -> Some (Only_types [ t ]))
     ; (let* _ = parens ws <|> return () in
        let* char = ws_line *> peek_char_fail in
@@ -100,16 +103,12 @@ let parse_func_args_returns_and_body pblock =
   return { args; returns; body }
 ;;
 
-let parse_anon_func pblock =
+let parse_const_func pblock =
   string "func" *> ws *> parse_func_args_returns_and_body pblock
-  >>| fun anon_func -> Expr_anon_func anon_func
+  >>| fun anon_func -> Const_func anon_func
 ;;
 
-let parse_chan_receive =
-  lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
-;;
-
-let parse_array pexpr =
+let parse_const_array pexpr =
   let add_similar_elements lst element count =
     let repeated_elements = List.init count (fun _ -> element) in
     lst @ repeated_elements
@@ -126,20 +125,32 @@ let parse_array pexpr =
   in
   lift3
     (fun size type' list_exprs ->
-      Expr_array (type', array_type_fix size type' list_exprs))
+      Const_array (type', array_type_fix size type' list_exprs))
     (square_brackets parse_int)
     (ws *> parse_type)
-    (curly_braces (sep_by (ws_line *> char ',' *> ws) pexpr) <|> list [])
+    (curly_braces (sep_by_comma pexpr <|> list []))
 ;;
 
-let parse_expr =
+let parse_const pexpr pblock =
+  choice
+    [ parse_const_int
+    ; parse_const_string
+    ; parse_const_array pexpr
+    ; parse_const_func pblock
+    ]
+  >>| fun const -> Expr_const const
+;;
+
+let parse_ident = parse_ident_not_blank >>| fun ident -> Expr_ident ident
+
+let parse_expr pblock =
   fix (fun pexpr ->
     let arg =
       parens pexpr
       <|> parse_expr_func_call pexpr
       <|> parse_chan_receive
-      <|> parse_simple_expr (* <|> parse_anon_func pblock *)
-      <|> parse_array pexpr
+      <|> parse_ident
+      <|> parse_const pexpr pblock
     in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
@@ -154,14 +165,43 @@ let parse_expr =
 
 (**************************************** Tests ****************************************)
 
-let%expect_test "expr const int" =
-  pp pp_expr parse_expr {|123|};
-  [%expect {|
-    (Expr_const (Const_int 123))|}]
+(********** const int and string **********)
+
+let%expect_test "const int" =
+  pp pp_expr parse_expr {|256|};
+  [%expect {| (Const_int 256) |}]
 ;;
 
+let%expect_test "zero" =
+  pp pp_expr parse_expr {|0|};
+  [%expect {| (Const_int 0) |}]
+;;
+
+let%expect_test "not digit in int" =
+  pp pp_expr parse_expr {|123,321|};
+  [%expect {| : end_of_input |}]
+;;
+
+(* bug
+let%expect_test "very big int" =
+  pp pp_expr parse_expr {|9999999999999999999999999999999999999999|};
+  [%expect {||}]
+;; *)
+
+let%expect_test "const string" =
+  pp pp_expr parse_expr {|"my_string"|};
+  [%expect {| (Const_string "my_string") |}]
+;;
+
+let%expect_test "string with '\n'" =
+  pp pp_expr parse_expr {|"Hello\n"|};
+  [%expect {| (Const_string "Hello\\n") |}]
+;;
+
+(********** const array **********)
+
 let%expect_test "expr simple array" =
-  pp pp_expr parse_expr {|[3]int|};
+  pp pp_expr parse_expr {|[3]int{}|};
   [%expect
     {|
     (Expr_array (Type_int,
@@ -180,17 +220,7 @@ let%expect_test "expr array with init" =
        )) |}]
 ;;
 
-let%expect_test "expr const string" =
-  pp pp_expr parse_expr {|"My_string123"|};
-  [%expect {|
-    (Expr_const (Const_string "My_string123"))|}]
-;;
-
-let%expect_test "expr ident true" =
-  pp pp_expr parse_expr {|true|};
-  [%expect {|
-    (Expr_ident "true")|}]
-;;
+(********** ident **********)
 
 let%expect_test "expr ident false" =
   pp pp_expr parse_expr {|false|};
@@ -215,6 +245,8 @@ let%expect_test "expr ident in braces" =
   [%expect {|
     (Expr_ident "abc")|}]
 ;;
+
+(********** complex exprs **********)
 
 let%expect_test "expr logical operations" =
   pp pp_expr parse_expr {|a && (b || c)|};

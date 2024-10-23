@@ -16,13 +16,6 @@ type type' =
   | Type_chan of type' (** Channel type [chan int] *)
 [@@deriving show { with_path = false }]
 
-(** Constants, a.k.a. literals *)
-type const =
-  | Const_int of int (** Integer constants such as [0], [123] *)
-  | Const_string of string (** Constant strings such as ["my_string"] *)
-  | Const_bool of bool (** Constant bool such as [false] *)
-[@@deriving show { with_path = false }]
-
 (** identificator for a variable or a function *)
 type ident = string [@@deriving show { with_path = false }]
 
@@ -62,19 +55,26 @@ type return_values =
 (** Expressions that can be assigned to a variable or put in "if" statement *)
 type expr =
   | Expr_const of const (** Constants such as [5], ["hi"], [false] *)
-  | Expr_array of type' * expr list
-  (** Arrays such as [[3]int{3, get_four()}]. Empty list means that there is
-      no initializers, array will be filled with default values
-      ([0] for int, [""] for string and [false] for bool arrays) *)
   | Expr_ident of ident (** An identificator for a variable such as [x] *)
   | Expr_index of expr * expr
   (** An access to an array element by its index such as: [my_array[i]], [get_array(1)[0]]*)
   | Expr_bin_oper of bin_oper * expr * expr
   (** Binary operations such as [a + b], [x || y] *)
   | Expr_un_oper of unary_oper * expr (** Unary operations such as [!z], [-f] *)
-  | Expr_anon_func of anon_func (** See anon_func type *)
   | Expr_call of func_call (** See func_call type *)
   | Expr_chan_recieve of ident (** Channel recieve operation [<-c] *)
+[@@deriving show { with_path = false }]
+
+(** Constants, a.k.a. literals *)
+and const =
+  | Const_int of int (** Integer constants such as [0], [123] *)
+  | Const_string of string (** Constant strings such as ["my_string"] *)
+  | Const_bool of bool (** Constant bool such as [false] *)
+  | Const_array of type' * expr list
+  (** Arrays such as [[3]int{3, get_four()}]. Empty list means that there is
+      no initializers, array will be filled with default values
+      ([0] for int, [""] for string and [false] for bool arrays) *)
+  | Const_func of anon_func (** See anon_func type *)
 [@@deriving show { with_path = false }]
 
 (** An anonymous functions such as:

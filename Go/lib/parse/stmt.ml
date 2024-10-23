@@ -15,10 +15,10 @@ let rec combine_lists l1 l2 =
   | _, _ -> assert false (* bad, mb [] instead *)
 ;;
 
-let parse_lvalues = sep_by1 (ws_line *> char ',' *> ws) parse_ident
-let parse_rvalues = sep_by1 (ws_line *> char ',' *> ws) parse_expr
+let parse_lvalues = sep_by_comma1 parse_ident
+let parse_rvalues pblock = sep_by_comma1 (parse_expr pblock)
 
-let parse_long_var_decl =
+let parse_long_var_decl pblock =
   let* _ = string "var" *> ws in
   let* lvalues = parse_lvalues <* ws_line in
   let* vars_type = parse_type >>| (fun t -> Some t) <|> return None in
@@ -29,7 +29,7 @@ let parse_long_var_decl =
     | Some t -> return (Long_decl_no_init (t, lvalues))
     | None -> fail "Long variable declaration without initializers should have type")
   else
-    let* rvalues = parse_rvalues in
+    let* rvalues = parse_rvalues pblock in
     if List.length lvalues = 0
     then fail "No identifiers in long variable declaration"
     else (
@@ -53,10 +53,10 @@ let parse_long_var_decl =
       | [], _ -> assert false)
 ;;
 
-let parse_short_var_decl =
+let parse_short_var_decl pblock =
   let* lvalues = parse_lvalues in
   let* _ = ws_line *> string ":=" *> ws in
-  let* rvalues = parse_rvalues in
+  let* rvalues = parse_rvalues pblock in
   if List.length lvalues = 0 || List.length rvalues = 0
   then fail "No identifiers or initializers in short vaiable declarations"
   else if List.length lvalues != List.length rvalues
@@ -77,10 +77,10 @@ let parse_short_var_decl =
   else return (Stmt_short_var_decl (Short_decl_mult_init (combine_lists lvalues rvalues)))
 ;;
 
-let parse_assign =
+let parse_assign pblock =
   let* lvalues = parse_lvalues in
   let* _ = ws_line *> char '=' *> ws in
-  let* rvalues = parse_rvalues in
+  let* rvalues = parse_rvalues pblock in
   if List.length lvalues = 0 || List.length rvalues = 0
   then fail "No identifiers or initializers in assignment"
   else if List.length lvalues != List.length rvalues
@@ -109,31 +109,34 @@ let parse_decr =
   parse_ident_not_blank <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 ;;
 
-let parse_stmt_call = parse_func_call parse_expr >>| fun call -> Stmt_call call
+let parse_stmt_call pblock =
+  parse_func_call (parse_expr pblock) >>| fun call -> Stmt_call call
+;;
 
 (* let parse_chan_send = return ()
    let parse_chan_receive = return () *)
 
-let parse_defer =
-  string "defer" *> ws *> parse_func_call parse_expr >>| fun call -> Stmt_defer call
+let parse_defer pblock =
+  string "defer" *> ws *> parse_func_call (parse_expr pblock)
+  >>| fun call -> Stmt_defer call
 ;;
 
-let parse_go =
-  string "go" *> ws *> parse_func_call parse_expr >>| fun call -> Stmt_go call
+let parse_go pblock =
+  string "go" *> ws *> parse_func_call (parse_expr pblock) >>| fun call -> Stmt_go call
 ;;
 
-let parse_chan_send =
+let parse_chan_send pblock =
   lift2
     (fun idt expr -> Stmt_chan_send (idt, expr))
     (ws *> parse_ident)
-    (token "<-" *> parse_expr)
+    (token "<-" *> parse_expr pblock)
 ;;
 
 let parse_break = string "break" *> return Stmt_break
 let parse_continue = string "continue" *> return Stmt_continue
 
-let parse_return =
-  string "return" *> ws_line *> sep_by (ws_line *> char ',' *> ws) parse_expr
+let parse_return pblock =
+  string "return" *> ws_line *> sep_by_comma (parse_expr pblock)
   >>| fun expr_list -> Stmt_return expr_list
 ;;
 
@@ -154,7 +157,7 @@ let parse_if pstmt pblock =
   then fail "Incorrect statement in if initialization"
   else
     let* _ = parse_stmt_sep <|> return () in
-    let* cond = ws *> parse_expr in
+    let* cond = ws *> parse_expr pblock in
     let* if_body = ws_line *> pblock <* ws_line in
     let* else_body =
       let* else_body_exists = string "else" *> ws *> return true <|> return false in
@@ -179,7 +182,7 @@ let parse_for pstmt pblock =
     let* init = pstmt >>| (fun stmt -> Some stmt) <|> return None in
     let ok_init = if is_valid_init init then true else false in
     let* _ = parse_stmt_sep in
-    let* cond = parse_expr >>| (fun expr -> Some expr) <|> return None in
+    let* cond = parse_expr pblock >>| (fun expr -> Some expr) <|> return None in
     let* _ = parse_stmt_sep in
     let* post =
       let* next_char = peek_char_fail in
@@ -205,11 +208,11 @@ let parse_for pstmt pblock =
     let* next_char = peek_char_fail in
     match next_char with
     | '{' -> return (None, None, None)
-    | _ -> parse_expr >>| fun cond -> None, Some cond, None
+    | _ -> parse_expr pblock >>| fun cond -> None, Some cond, None
   in
   let parse_for_range_n =
     let* _ = string "range" *> ws in
-    let* expr = parse_expr in
+    let* expr = parse_expr pblock in
     return
       ( Some (Stmt_short_var_decl (Short_decl_mult_init [ "i", Expr_const (Const_int 0) ]))
       , Some (Expr_bin_oper (Bin_less, Expr_ident "i", expr))
@@ -225,7 +228,7 @@ let parse_for pstmt pblock =
 
 let parse_range pblock =
   let* _ = string "for" *> ws in
-  let* idents = sep_by1 (ws_line *> char ',' *> ws) parse_ident in
+  let* idents = sep_by_comma1 parse_ident in
   if List.length idents > 2
   then fail "for with range stmt can have no more than two identifiers"
   else (
@@ -241,7 +244,7 @@ let parse_range pblock =
           <|> string "=" *> return false
           <|> fail "Assignment or declaration missed in for with range stmt")
     in
-    let* array = ws *> string "range" *> ws *> parse_expr in
+    let* array = ws *> string "range" *> ws *> parse_expr pblock in
     let* body = ws_line *> pblock in
     if is_with_decl
     then return (Stmt_range (Range_decl { index; element; array; body }))
@@ -251,19 +254,19 @@ let parse_range pblock =
 let parse_stmt pblock =
   fix (fun pstmt ->
     choice
-      [ (parse_long_var_decl >>| fun decl -> Stmt_long_var_decl decl)
-      ; parse_short_var_decl
+      [ (parse_long_var_decl pblock >>| fun decl -> Stmt_long_var_decl decl)
+      ; parse_short_var_decl pblock
       ; parse_incr
       ; parse_decr
       ; parse_if pstmt pblock
-      ; parse_chan_send
+      ; parse_chan_send pblock
       ; parse_break
       ; parse_continue
-      ; parse_return
-      ; parse_stmt_call
-      ; parse_assign
-      ; parse_defer
-      ; parse_go
+      ; parse_return pblock
+      ; parse_stmt_call pblock
+      ; parse_assign pblock
+      ; parse_defer pblock
+      ; parse_go pblock
       ; (pblock >>| fun block -> Stmt_block block)
       ; parse_for pstmt pblock
       ; parse_range pblock
@@ -283,6 +286,54 @@ let parse_block : block t =
 ;;
 
 (**************************************** Tests ****************************************)
+
+(* убрать в другое место *)
+let pexpr = parse_expr parse_block
+
+(********** anon func **********)
+
+let%expect_test "empty anon func" =
+  pp pp_expr pexpr {|func() {}|};
+  [%expect {| (Expr_const (Const_func { args = []; returns = None; body = [] })) |}]
+;;
+
+let%expect_test "anon func with one arg and one return value" =
+  pp pp_expr pexpr {|func(a int) int { return a }|};
+  [%expect {|
+    (Expr_const
+       (Const_func
+          { args = [("a", Type_int)]; returns = (Some (Only_types [Type_int]));
+            body = [(Stmt_return [(Expr_ident "a")])] })) |}]
+;;
+
+let%expect_test "anon func with mult args and return values" =
+  pp pp_expr pexpr {|func(a int, b string) (int, string) { return a, b }|};
+  [%expect {|
+    (Expr_const
+       (Const_func
+          { args = [("a", Type_int); ("b", Type_string)];
+            returns = (Some (Only_types [Type_int; Type_string]));
+            body = [(Stmt_return [(Expr_ident "a"); (Expr_ident "b")])] })) |}]
+;;
+
+let%expect_test "anon func with mult args and named return values" =
+  pp
+    pp_expr
+    pexpr
+    {|func(a int, b string) (res1 int, res2 string) { res1, res2 = a, b; return }|};
+  [%expect {|
+    (Expr_const
+       (Const_func
+          { args = [("a", Type_int); ("b", Type_string)];
+            returns =
+            (Some (Ident_and_types [("res1", Type_int); ("res2", Type_string)]));
+            body =
+            [(Stmt_assign
+                (Assign_mult_expr
+                   [("res1", (Expr_ident "a")); ("res2", (Expr_ident "b"))]));
+              (Stmt_return [])]
+            })) |}]
+;;
 
 let pstmt = parse_stmt parse_block (* for tests *)
 
@@ -540,14 +591,17 @@ let%expect_test "stmt long mult var decl with type" =
     (Stmt_long_var_decl
        (Long_decl_mult_init ((Some (Type_array (Type_int, 2))),
           [("a",
-            (Expr_array (Type_int,
-               [(Expr_const (Const_int 1)); (Expr_const (Const_int 2))])));
+            (Expr_const
+               (Const_array (Type_int,
+                  [(Expr_const (Const_int 1)); (Expr_const (Const_int 2))]))));
             ("b",
-             (Expr_array (Type_int,
-                [(Expr_const (Const_int 0)); (Expr_const (Const_int 0))])));
+             (Expr_const
+                (Const_array (Type_int,
+                   [(Expr_const (Const_int 0)); (Expr_const (Const_int 0))]))));
             ("c",
-             (Expr_array (Type_int,
-                [(Expr_const (Const_int 10)); (Expr_const (Const_int 20))])))
+             (Expr_const
+                (Const_array (Type_int,
+                   [(Expr_const (Const_int 10)); (Expr_const (Const_int 20))]))))
             ]
           ))) |}]
 ;;
@@ -824,7 +878,8 @@ let%expect_test "stmt range with decl blank index and elem" =
 
 let%expect_test "stmt range with assign only index" =
   pp pp_stmt pstmt {|for i = range array {}|};
-  [%expect {|
+  [%expect
+    {|
     (Stmt_range
        Range_assign {index = "i"; element = None; array = (Expr_ident "array");
          body = []}) |}]
@@ -832,7 +887,8 @@ let%expect_test "stmt range with assign only index" =
 
 let%expect_test "stmt range with assign index and elem" =
   pp pp_stmt pstmt {|for i, elem = range array {}|};
-  [%expect {|
+  [%expect
+    {|
     (Stmt_range
        Range_assign {index = "i"; element = (Some "elem");
          array = (Expr_ident "array"); body = []}) |}]
@@ -840,7 +896,8 @@ let%expect_test "stmt range with assign index and elem" =
 
 let%expect_test "stmt range with assign blank index and elem" =
   pp pp_stmt pstmt {|for _, _ = range array {}|};
-  [%expect {|
+  [%expect
+    {|
     (Stmt_range
        Range_assign {index = "_"; element = (Some "_");
          array = (Expr_ident "array"); body = []}) |}]
@@ -863,9 +920,10 @@ let%expect_test "stmt range with const array" =
     (Stmt_range
        Range_decl {index = "i"; element = (Some "elem");
          array =
-         (Expr_array (Type_int,
-            [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
-              (Expr_const (Const_int 3))]
-            ));
+         (Expr_const
+            (Const_array (Type_int,
+               [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+                 (Expr_const (Const_int 3))]
+               )));
          body = []}) |}]
 ;;

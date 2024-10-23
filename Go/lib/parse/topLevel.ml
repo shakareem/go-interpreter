@@ -17,7 +17,7 @@ let parse_func_decl : func_decl t =
 ;;
 
 let parse_top_decl =
-  parse_long_var_decl
+  parse_long_var_decl parse_block
   >>| (fun decl -> Decl_var decl)
   <|> (parse_func_decl >>| fun decl -> Decl_func decl)
 ;;
@@ -153,5 +153,47 @@ go println(id(10))
                     ]))
               ]
             }))
+      ] |}]
+;;
+
+let%expect_test "file with factorial func" =
+  pp
+    pp_file
+    parse_file
+    {|
+  
+  func fac(n int) int {
+      if n == 1 {
+          return 1  
+      } else {
+          return n * fac(n - 1)
+      }
+  }|};
+  [%expect
+    {|
+    [(Decl_func
+        ("fac",
+         { args = [("n", Type_int)]; returns = (Some (Only_types [Type_int]));
+           body =
+           [Stmt_if {init = None;
+              cond =
+              (Expr_bin_oper (Bin_equal, (Expr_ident "n"),
+                 (Expr_const (Const_int 1))));
+              if_body = [(Stmt_return [(Expr_const (Const_int 1))])];
+              else_body =
+              (Some (Stmt_block
+                       [(Stmt_return
+                           [(Expr_bin_oper (Bin_multiply, (Expr_ident "n"),
+                               (Expr_call
+                                  ((Expr_ident "fac"),
+                                   [(Expr_bin_oper (Bin_subtract,
+                                       (Expr_ident "n"),
+                                       (Expr_const (Const_int 1))))
+                                     ]))
+                               ))
+                             ])
+                         ]))}
+             ]
+           }))
       ] |}]
 ;;
