@@ -67,8 +67,10 @@ let parse_chan_receive =
 let parse_const_int = parse_int >>| fun num -> Const_int num
 
 let parse_const_string =
-  let parse_string = take_till (Char.equal '"') >>| fun str -> Const_string str in
-  char '"' *> parse_string <* char '"'
+  let* _ = char '"' in
+  let* string = take_till (Char.equal '"') in
+  let* _ = char '"' in
+  return (Const_string string)
 ;;
 
 let parse_idents_with_types =
@@ -152,15 +154,24 @@ let parse_const pexpr pblock =
 
 let parse_ident = parse_ident_not_blank >>| fun ident -> Expr_ident ident
 
+let parse_index pexpr =
+  let* array = pexpr <* ws_line in
+  let* index = square_brackets pexpr in
+  return (Expr_index (array, index))
+;;
+
+let parse_atomic_expr pexpr pblock =
+  choice
+    [ parse_expr_func_call pexpr (* ; parse_index pexpr *)
+    ; parse_chan_receive
+    ; parse_ident
+    ; parse_const pexpr pblock
+    ]
+;;
+
 let parse_expr pblock =
   fix (fun pexpr ->
-    let arg =
-      parens pexpr
-      <|> parse_expr_func_call pexpr
-      <|> parse_chan_receive
-      <|> parse_ident
-      <|> parse_const pexpr pblock
-    in
+    let arg = parens pexpr <|> parse_atomic_expr pexpr pblock in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in

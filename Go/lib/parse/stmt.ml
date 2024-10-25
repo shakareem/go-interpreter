@@ -290,7 +290,7 @@ let parse_block : block t =
 (**************************************** Tests ****************************************)
 
 (* убрать в другое место *)
-let pexpr = parse_expr parse_block
+let pexpr = parse_expr parse_block (* for expr tests *)
 
 (********** anon func **********)
 
@@ -338,6 +338,23 @@ let%expect_test "anon func with mult args and named return values" =
                    [("res1", (Expr_ident "a")); ("res2", (Expr_ident "b"))]));
               (Stmt_return [])]
             })) |}]
+;;
+
+(********** index **********)
+
+let%expect_test "index with idents" =
+  pp pp_expr pexpr {|array[i]|};
+  [%expect {||}]
+;;
+
+let%expect_test "index with condtants" =
+  pp pp_expr pexpr {|[3]int{1, 2, 3}[0]|};
+  [%expect {||}]
+;;
+
+let%expect_test "index wih=th function calls" =
+  pp pp_expr pexpr {|get_array(a, b)[get_index(c, d)]|};
+  [%expect {||}]
 ;;
 
 let pstmt = parse_stmt parse_block (* for tests *)
@@ -621,7 +638,13 @@ let%expect_test "stmt long mult var decl no type" =
 (* не работает из-за экспрешенов *)
 let%expect_test "stmt long single var decl with type" =
   pp pp_stmt pstmt {|var a func() = func() {}|};
-  [%expect {| : Incorrect statement |}]
+  [%expect
+    {|
+    (Stmt_long_var_decl
+       (Long_decl_mult_init ((Some (Type_func ([], []))),
+          [("a",
+            (Expr_const (Const_func { args = []; returns = None; body = [] })))]
+          ))) |}]
 ;;
 
 let%expect_test "stmt long mult var decl with type" =

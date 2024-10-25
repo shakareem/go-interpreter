@@ -85,21 +85,28 @@ let parse_simple_type =
     ; string "string" *> return Type_string
     ; string "bool" *> return Type_bool
     ]
-    ~failure_msg:"Invalid type"
 ;;
 
-(* TODO: add arrays and functions *)
+let parse_func_type ptype =
+  let* _ = string "func" *> ws in
+  let* args = parens (sep_by_comma ptype) in
+  let* returns =
+    ws_line
+    *> choice
+         [ (ptype >>| fun type' -> [ type' ]); parens (sep_by_comma ptype); return [] ]
+  in
+  return (Type_func (args, returns))
+;;
+
+let parse_array_type ptype =
+  let* size = square_brackets parse_int in
+  let* type' = ws_line *> ptype in
+  return (Type_array (type', size))
+;;
+
 let parse_type =
-  fix (fun type' ->
-    let parse_array_type =
-      lift2
-        (fun size type' -> Type_array (type', size))
-        (square_brackets parse_int)
-        (ws *> type')
-    in
-    let arg = parse_array_type <|> parse_simple_type in
-    let arg = fix (fun _ -> arg) <|> arg in
-    arg)
+  fix (fun ptype ->
+    choice [ parse_simple_type; parse_func_type ptype; parse_array_type ptype ])
 ;;
 
 (**************************************** Tests ****************************************)
@@ -145,7 +152,7 @@ let%expect_test "not blank ident with blank input" =
 
 let%expect_test "incorrect type" =
   pp pp_type' parse_type {|blablablablabla|};
-  [%expect {| : Invalid type |}]
+  [%expect {| : no more choices |}]
 ;;
 
 let%expect_test "type int" =
@@ -168,62 +175,67 @@ let%expect_test "type array of arrays" =
   [%expect {| (Type_array ((Type_array (Type_string, 0)), 4)) |}]
 ;;
 
-(* bug *)
 let%expect_test "type array of functions" =
   pp pp_type' parse_type {|[4]func()|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_array ((Type_func ([], [])), 4)) |}]
 ;;
 
-(* bug *)
 let%expect_test "type simple func" =
   pp pp_type' parse_type {|func()|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_func ([], [])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type simple func with brackets" =
   pp pp_type' parse_type {|func()()|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_func ([], [])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type simple func with brackets and ws" =
   pp pp_type' parse_type {|func()  /* some comment */  ()|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_func ([], [])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type func with one arg and without returns" =
   pp pp_type' parse_type {|func(int)|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_func ([Type_int], [])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type func with mult args and without returns" =
   pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
-  [%expect {| : Invalid type |}]
+  [%expect
+    {|
+    (Type_func ([Type_int; Type_string; Type_bool; (Type_array (Type_int, 4))],
+       [])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type func with one return" =
   pp pp_type' parse_type {|func() int|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_func ([], [Type_int])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type func with multiple returns" =
   pp pp_type' parse_type {|func() (int, string)|};
-  [%expect {| : Invalid type |}]
+  [%expect {| (Type_func ([], [Type_int; Type_string])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type func that gets func and returns func" =
   pp pp_type' parse_type {|func(func(int) string) func([4][5]int)|};
-  [%expect {| : Invalid type |}]
+  [%expect
+    {|
+    (Type_func ([(Type_func ([Type_int], [Type_string]))],
+       [(Type_func ([(Type_array ((Type_array (Type_int, 5)), 4))], []))])) |}]
 ;;
 
-(* bug *)
 let%expect_test "type func that returns func that returns func..." =
   pp pp_type' parse_type {|func() func() func() func() func() func()|};
-  [%expect {| : Invalid type |}]
+  [%expect
+    {|
+    (Type_func ([],
+       [(Type_func ([],
+           [(Type_func ([],
+               [(Type_func ([], [(Type_func ([], [(Type_func ([], []))]))]))]))
+             ]
+           ))
+         ]
+       )) |}]
 ;;
