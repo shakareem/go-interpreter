@@ -6,7 +6,6 @@ open! Base
 open Ast
 open Angstrom
 
-val pp : (Format.formatter -> 'a -> unit) -> 'a t -> ident -> unit
 val ws : unit t
 val ws_line : unit t
 val token : string -> string t
