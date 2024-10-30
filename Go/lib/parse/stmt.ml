@@ -111,20 +111,22 @@ let parse_decr =
   parse_ident_not_blank <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 ;;
 
-let parse_stmt_call pblock =
-  parse_func_call (parse_expr pblock) >>| fun call -> Stmt_call call
+let parse_func_call pblock =
+  parse_expr pblock
+  >>= fun expr ->
+  match expr with
+  | Expr_call call -> return call
+  | _ -> fail "Not a function call"
 ;;
 
-(* let parse_chan_send = return ()
-   let parse_chan_receive = return () *)
+let parse_stmt_call pblock = parse_func_call pblock >>| fun call -> Stmt_call call
 
 let parse_defer pblock =
-  string "defer" *> ws *> parse_func_call (parse_expr pblock)
-  >>| fun call -> Stmt_defer call
+  string "defer" *> ws *> parse_func_call pblock >>| fun call -> Stmt_defer call
 ;;
 
 let parse_go pblock =
-  string "go" *> ws *> parse_func_call (parse_expr pblock) >>| fun call -> Stmt_go call
+  string "go" *> ws *> parse_func_call pblock >>| fun call -> Stmt_go call
 ;;
 
 let parse_chan_send pblock =

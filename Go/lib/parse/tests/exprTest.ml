@@ -13,12 +13,12 @@ let pexpr = parse_expr parse_block
 
 let%expect_test "const int" =
   pp pp_expr pexpr {|256|};
-  [%expect {| (Const_int 256) |}]
+  [%expect {| (Expr_const (Const_int 256)) |}]
 ;;
 
 let%expect_test "zero" =
   pp pp_expr pexpr {|0|};
-  [%expect {| (Const_int 0) |}]
+  [%expect {| (Expr_const (Const_int 0)) |}]
 ;;
 
 let%expect_test "not digit in int" =
@@ -34,12 +34,12 @@ let%expect_test "very big int" =
 
 let%expect_test "const string" =
   pp pp_expr pexpr {|"my_string"|};
-  [%expect {| (Const_string "my_string") |}]
+  [%expect {| (Expr_const (Const_string "my_string")) |}]
 ;;
 
 let%expect_test "string with '\n'" =
   pp pp_expr pexpr {|"Hello\n"|};
-  [%expect {| (Const_string "Hello\\n") |}]
+  [%expect {| (Expr_const (Const_string "Hello\\n")) |}]
 ;;
 
 (********** const array **********)
@@ -48,20 +48,22 @@ let%expect_test "expr simple array" =
   pp pp_expr pexpr {|[3]int{}|};
   [%expect
     {|
-    (Expr_array (Type_int,
-       [(Expr_const (Const_int 0)); (Expr_const (Const_int 0));
-         (Expr_const (Const_int 0))]
-       )) |}]
+    (Expr_const
+       (Const_array (Type_int,
+          [(Expr_const (Const_int 0)); (Expr_const (Const_int 0));
+            (Expr_const (Const_int 0))]
+          ))) |}]
 ;;
 
 let%expect_test "expr array with init" =
   pp pp_expr pexpr {|[3]int{1, 2}|};
   [%expect
     {|
-    (Expr_array (Type_int,
-       [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
-         (Expr_const (Const_int 0))]
-       )) |}]
+    (Expr_const
+       (Const_array (Type_int,
+          [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+            (Expr_const (Const_int 0))]
+          ))) |}]
 ;;
 
 (********** ident **********)
@@ -230,15 +232,35 @@ let%expect_test "anon func with mult args and named return values" =
 
 let%expect_test "index with idents" =
   pp pp_expr pexpr {|array[i]|};
-  [%expect {||}]
+  [%expect {| (Expr_index ((Expr_ident "array"), (Expr_ident "i"))) |}]
 ;;
 
 let%expect_test "index with condtants" =
   pp pp_expr pexpr {|[3]int{1, 2, 3}[0]|};
-  [%expect {||}]
+  [%expect
+    {|
+    (Expr_index (
+       (Expr_const
+          (Const_array (Type_int,
+             [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+               (Expr_const (Const_int 3))]
+             ))),
+       (Expr_const (Const_int 0)))) |}]
 ;;
 
-let%expect_test "index wih=th function calls" =
-  pp pp_expr pexpr {|get_array(a, b)[get_index(c, d)]|};
-  [%expect {||}]
+let%expect_test "index with function call in index" =
+  pp pp_expr pexpr {|array[get_index(a, b)]|};
+  [%expect
+    {|
+    (Expr_index ((Expr_ident "array"),
+       (Expr_call
+          ((Expr_ident "get_index"), [(Expr_ident "a"); (Expr_ident "b")]))
+       )) |}]
+;;
+
+let%expect_test "index with function call as an array" =
+  pp pp_expr pexpr {|get_array(a, b)[1]|};
+  [%expect
+    {|
+    : end_of_input |}]
 ;;

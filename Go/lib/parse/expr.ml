@@ -52,14 +52,6 @@ let pelse =
 let peand = token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1, exp2))
 let peor = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
 
-let parse_func_call pexpr : func_call t =
-  let* expr = pexpr <* ws_line in
-  let* args = parens (sep_by_comma pexpr) in
-  return (expr, args)
-;;
-
-let parse_expr_func_call pexpr = parse_func_call pexpr >>| fun call -> Expr_call call
-
 let parse_chan_receive =
   lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
 ;;
@@ -154,24 +146,26 @@ let parse_const pexpr pblock =
 
 let parse_ident = parse_ident_not_blank >>| fun ident -> Expr_ident ident
 
-let parse_index pexpr =
-  let* array = pexpr <* ws_line in
+let parse_expr_func_call pexpr func_expr =
+  let* func = func_expr <* ws_line in
+  let* args = parens (sep_by_comma pexpr) in
+  return (Expr_call (func, args))
+;;
+
+let parse_index pexpr array_expr =
+  let* array = array_expr <* ws_line in
   let* index = square_brackets pexpr in
   return (Expr_index (array, index))
 ;;
 
 let parse_atomic_expr pexpr pblock =
-  choice
-    [ parse_expr_func_call pexpr (* ; parse_index pexpr *)
-    ; parse_chan_receive
-    ; parse_ident
-    ; parse_const pexpr pblock
-    ]
+  choice [ parse_ident; parse_const pexpr pblock; parse_chan_receive ]
 ;;
 
 let parse_expr pblock =
   fix (fun pexpr ->
     let arg = parens pexpr <|> parse_atomic_expr pexpr pblock in
+    let arg = parse_expr_func_call pexpr arg <|> parse_index pexpr arg <|> arg in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
