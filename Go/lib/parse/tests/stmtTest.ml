@@ -46,7 +46,7 @@ let%expect_test "stmt go with expr that is not a func" =
     : Incorrect statement |}]
 ;;
 
-let%expect_test "chan send sttmt" =
+let%expect_test "stmt chan send" =
   pp pp_stmt pstmt {|c <- sum + 1|};
   [%expect
     {|

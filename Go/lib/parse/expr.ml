@@ -146,16 +146,24 @@ let parse_const pexpr pblock =
 
 let parse_ident = parse_ident_not_blank >>| fun ident -> Expr_ident ident
 
-let parse_expr_func_call pexpr func_expr =
-  let* func = func_expr <* ws_line in
+let parse_expr_func_call pexpr func =
   let* args = parens (sep_by_comma pexpr) in
   return (Expr_call (func, args))
 ;;
 
-let parse_index pexpr array_expr =
-  let* array = array_expr <* ws_line in
+let parse_index pexpr array =
   let* index = square_brackets pexpr in
   return (Expr_index (array, index))
+;;
+
+let parse_nested_calls_and_indices pexpr parse_func_or_array =
+  let rec helper acc =
+    (let* new_acc = parse_expr_func_call pexpr acc <|> parse_index pexpr acc in
+     helper new_acc)
+    <|> return acc
+  in
+  let* func_or_array = parse_func_or_array in
+  helper func_or_array
 ;;
 
 let parse_atomic_expr pexpr pblock =
@@ -165,7 +173,7 @@ let parse_atomic_expr pexpr pblock =
 let parse_expr pblock =
   fix (fun pexpr ->
     let arg = parens pexpr <|> parse_atomic_expr pexpr pblock in
-    let arg = parse_expr_func_call pexpr arg <|> parse_index pexpr arg <|> arg in
+    let arg = parse_nested_calls_and_indices pexpr arg in
     let arg = penot arg <|> arg in
     let arg = peusb arg <|> arg in
     let arg = chainl1 arg (pemul <|> pemod <|> pediv) in

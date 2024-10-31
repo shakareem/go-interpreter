@@ -92,6 +92,81 @@ let%expect_test "expr ident in braces" =
     (Expr_ident "abc")|}]
 ;;
 
+(********** func call **********)
+
+let%expect_test "simple func call" =
+  pp pp_expr pexpr "a()";
+  [%expect {|
+    (Expr_call ((Expr_ident "a"), []))|}]
+;;
+
+let%expect_test "func call with multiple complex arguments" =
+  pp pp_expr pexpr "three(abc, 2 + 3, fac(25))";
+  [%expect
+    {|
+    (Expr_call
+       ((Expr_ident "three"),
+        [(Expr_ident "abc");
+          (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
+             (Expr_const (Const_int 3))));
+          (Expr_call ((Expr_ident "fac"), [(Expr_const (Const_int 25))]))]))|}]
+;;
+
+(* bug *)
+let%expect_test "nested func call" =
+  pp pp_expr pexpr "a()()()";
+  [%expect {|
+    (Expr_call ((Expr_call ((Expr_call ((Expr_ident "a"), [])), [])), []))|}]
+;;
+
+(********** index **********)
+
+let%expect_test "index with idents" =
+  pp pp_expr pexpr {|array[i]|};
+  [%expect {| (Expr_index ((Expr_ident "array"), (Expr_ident "i"))) |}]
+;;
+
+let%expect_test "index with condtants" =
+  pp pp_expr pexpr {|[3]int{1, 2, 3}[0]|};
+  [%expect
+    {|
+    (Expr_index (
+       (Expr_const
+          (Const_array (Type_int,
+             [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
+               (Expr_const (Const_int 3))]
+             ))),
+       (Expr_const (Const_int 0)))) |}]
+;;
+
+let%expect_test "index with function call in index" =
+  pp pp_expr pexpr {|array[get_index(a, b)]|};
+  [%expect
+    {|
+    (Expr_index ((Expr_ident "array"),
+       (Expr_call
+          ((Expr_ident "get_index"), [(Expr_ident "a"); (Expr_ident "b")]))
+       )) |}]
+;;
+
+let%expect_test "index with function call as an array" =
+  pp pp_expr pexpr {|get_array(a, b)[1]|};
+  [%expect {|
+    (Expr_index (
+       (Expr_call
+          ((Expr_ident "get_array"), [(Expr_ident "a"); (Expr_ident "b")])),
+       (Expr_const (Const_int 1)))) |}]
+;;
+
+let%expect_test "nested indicies" =
+  pp pp_expr pexpr {|a[1][2][3]|};
+  [%expect {|
+    (Expr_index (
+       (Expr_index ((Expr_index ((Expr_ident "a"), (Expr_const (Const_int 1)))),
+          (Expr_const (Const_int 2)))),
+       (Expr_const (Const_int 3)))) |}]
+;;
+
 (********** complex exprs **********)
 
 let%expect_test "expr logical operations" =
@@ -140,18 +215,6 @@ let%expect_test "fac_piece1 test" =
                (Expr_const (Const_int 1))))
              ]))
        ))|}]
-;;
-
-let%expect_test "func call with multiple complex arguments" =
-  pp pp_expr pexpr "three(abc, 2 + 3, fac(25))";
-  [%expect
-    {|
-    (Expr_call
-       ((Expr_ident "three"),
-        [(Expr_ident "abc");
-          (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
-             (Expr_const (Const_int 3))));
-          (Expr_call ((Expr_ident "fac"), [(Expr_const (Const_int 25))]))]))|}]
 ;;
 
 let%expect_test "fac_piece2 test" =
@@ -226,41 +289,4 @@ let%expect_test "anon func with mult args and named return values" =
                    [("res1", (Expr_ident "a")); ("res2", (Expr_ident "b"))]));
               (Stmt_return [])]
             })) |}]
-;;
-
-(********** index **********)
-
-let%expect_test "index with idents" =
-  pp pp_expr pexpr {|array[i]|};
-  [%expect {| (Expr_index ((Expr_ident "array"), (Expr_ident "i"))) |}]
-;;
-
-let%expect_test "index with condtants" =
-  pp pp_expr pexpr {|[3]int{1, 2, 3}[0]|};
-  [%expect
-    {|
-    (Expr_index (
-       (Expr_const
-          (Const_array (Type_int,
-             [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
-               (Expr_const (Const_int 3))]
-             ))),
-       (Expr_const (Const_int 0)))) |}]
-;;
-
-let%expect_test "index with function call in index" =
-  pp pp_expr pexpr {|array[get_index(a, b)]|};
-  [%expect
-    {|
-    (Expr_index ((Expr_ident "array"),
-       (Expr_call
-          ((Expr_ident "get_index"), [(Expr_ident "a"); (Expr_ident "b")]))
-       )) |}]
-;;
-
-let%expect_test "index with function call as an array" =
-  pp pp_expr pexpr {|get_array(a, b)[1]|};
-  [%expect
-    {|
-    : end_of_input |}]
 ;;
