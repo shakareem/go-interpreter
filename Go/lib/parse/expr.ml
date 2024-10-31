@@ -153,17 +153,22 @@ let parse_expr_func_call pexpr func =
 
 let parse_index pexpr array =
   let* index = square_brackets pexpr in
+  return (array, index)
+;;
+
+let parse_expr_index pexpr array =
+  let* array, index = parse_index pexpr array in
   return (Expr_index (array, index))
 ;;
 
 let parse_nested_calls_and_indices pexpr parse_func_or_array =
   let rec helper acc =
-    (let* new_acc = parse_expr_func_call pexpr acc <|> parse_index pexpr acc in
-     helper new_acc)
+    parse_expr_func_call pexpr acc
+    <|> parse_expr_index pexpr acc
+    >>= helper
     <|> return acc
   in
-  let* func_or_array = parse_func_or_array in
-  helper func_or_array
+  parse_func_or_array >>= helper
 ;;
 
 let parse_atomic_expr pexpr pblock =

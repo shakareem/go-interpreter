@@ -286,7 +286,8 @@ let%expect_test "anon func with mult args and named return values" =
             body =
             [(Stmt_assign
                 (Assign_mult_expr
-                   [("res1", (Expr_ident "a")); ("res2", (Expr_ident "b"))]));
+                   [((Lvalue_ident "res1"), (Expr_ident "a"));
+                     ((Lvalue_ident "res2"), (Expr_ident "b"))]));
               (Stmt_return [])]
             })) |}]
 ;;

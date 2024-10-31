@@ -167,7 +167,24 @@ let%expect_test "stmt func call with complex expressions and comments" =
 
 let%expect_test "stmt assign one lvalue, one rvalue" =
   pp pp_stmt pstmt {|a = 5|};
-  [%expect {| (Stmt_assign (Assign_mult_expr [("a", (Expr_const (Const_int 5)))])) |}]
+  [%expect
+    {|
+    (Stmt_assign
+       (Assign_mult_expr [((Lvalue_ident "a"), (Expr_const (Const_int 5)))])) |}]
+;;
+
+let%expect_test "stmt assign one lvalue that is an array index, one rvalue" =
+  pp pp_stmt pstmt {|a[i][2 + 3] = 5|};
+  [%expect
+    {|
+    (Stmt_assign
+       (Assign_mult_expr
+          [((Lvalue_array_index (
+               (Lvalue_array_index ((Lvalue_ident "a"), (Expr_ident "i"))),
+               (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
+                  (Expr_const (Const_int 3))))
+               )),
+            (Expr_const (Const_int 5)))])) |}]
 ;;
 
 let%expect_test "stmt assign with mult equal number of lvalues and rvalues and ws" =
@@ -176,7 +193,7 @@ let%expect_test "stmt assign with mult equal number of lvalues and rvalues and w
     pstmt
     {|a, 
   b , // comment
-  c = 
+  c[get_index()] = 
   
   5, /* comment////// */true,
    "hello"|};
@@ -184,16 +201,23 @@ let%expect_test "stmt assign with mult equal number of lvalues and rvalues and w
     {|
     (Stmt_assign
        (Assign_mult_expr
-          [("a", (Expr_const (Const_int 5))); ("b", (Expr_ident "true"));
-            ("c", (Expr_const (Const_string "hello")))])) |}]
+          [((Lvalue_ident "a"), (Expr_const (Const_int 5)));
+            ((Lvalue_ident "b"), (Expr_ident "true"));
+            ((Lvalue_array_index ((Lvalue_ident "c"),
+                (Expr_call ((Expr_ident "get_index"), [])))),
+             (Expr_const (Const_string "hello")))
+            ])) |}]
 ;;
 
 let%expect_test "stmt assign mult lvalues and one rvalue that is a func call" =
-  pp pp_stmt pstmt {|a, b ,c = get_three()|};
+  pp pp_stmt pstmt {|a, b[0] ,c = get_three()|};
   [%expect
     {|
     (Stmt_assign
-       (Assign_one_expr (["a"; "b"; "c"],
+       (Assign_one_expr (
+          [(Lvalue_ident "a");
+            (Lvalue_array_index ((Lvalue_ident "b"), (Expr_const (Const_int 0))));
+            (Lvalue_ident "c")],
           (Expr_call ((Expr_ident "get_three"), []))))) |}]
 ;;
 

@@ -81,10 +81,11 @@ let%expect_test "file with one complex func decl" =
            body =
            [(Stmt_assign
                (Assign_mult_expr
-                  [("sum",
+                  [((Lvalue_ident "sum"),
                     (Expr_bin_oper (Bin_sum, (Expr_ident "a"), (Expr_ident "b"))))
                     ]));
-             (Stmt_assign (Assign_mult_expr [("s", (Expr_ident "c"))]));
+             (Stmt_assign
+                (Assign_mult_expr [((Lvalue_ident "s"), (Expr_ident "c"))]));
              (Stmt_return [])]
            }))
       ] |}]

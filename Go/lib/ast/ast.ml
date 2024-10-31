@@ -144,14 +144,23 @@ and stmt =
   | Stmt_go of func_call (** See func_call type *)
 [@@deriving show { with_path = false }]
 
+(** Lvalue in assignments *)
+and lvalue =
+  | Lvalue_ident of ident (** Lvalue of ident such as [my_var] *)
+  | Lvalue_array_index of lvalue * expr
+  (** Lvalue of array and index such as:
+      [array[get_index()]], [array[i][j][k]] *)
+[@@deriving show { with_path = false }]
+
 (** Variable assignments *)
 and assign =
-  | Assign_mult_expr of (ident * expr) list
+  | Assign_mult_expr of (lvalue * expr) list
   (** Assignment to a variable with equal number of identifiers and initializers
-      such as [a = 3], [a, b = 4, 5]. Invariant: size of the list >= 1 *)
-  | Assign_one_expr of ident list * expr
-  (** Assignment to a variable with one initializer that is a function
-      such as [a = 3], [a, b = 4, 5]. Invariant: size of the list >= 1 *)
+      such as [a = 3], [a, b[0] = 4, 5]. Invariant: size of the list >= 1 *)
+  | Assign_one_expr of lvalue list * expr
+  (** Assignment to a variable with multiple lvalues and
+      one initializer that is a function such as
+      [a, b, c[i] = get_three()] . Invariant: size of the list >= 1 *)
 
 (** Block of statements in curly braces *)
 and block = stmt list [@@deriving show { with_path = false }]

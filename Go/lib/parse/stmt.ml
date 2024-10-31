@@ -79,8 +79,28 @@ let parse_short_var_decl pblock =
   else return (Stmt_short_var_decl (Short_decl_mult_init (combine_lists lvalues rvalues)))
 ;;
 
+(*
+   let parse_nested_calls_and_indices pexpr parse_func_or_array =
+   let rec helper acc =
+   parse_expr_func_call pexpr acc <|> parse_index pexpr acc >>= helper <|> return acc
+   in
+   parse_func_or_array >>= helper
+   ;;
+*)
+let parse_assign_lvalues pblock =
+  let parse_lvalue =
+    let rec helper acc =
+      parse_index (parse_expr pblock) acc
+      >>= (fun (array, index) -> helper (Lvalue_array_index (array, index)))
+      <|> return acc
+    in
+    parse_ident >>= fun ident -> helper (Lvalue_ident ident)
+  in
+  sep_by_comma1 parse_lvalue
+;;
+
 let parse_assign pblock =
-  let* lvalues = parse_lvalues in
+  let* lvalues = parse_assign_lvalues pblock in
   let* _ = ws_line *> char '=' *> ws in
   let* rvalues = parse_rvalues pblock in
   if List.length lvalues = 0 || List.length rvalues = 0
