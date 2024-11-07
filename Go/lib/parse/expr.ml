@@ -13,49 +13,63 @@ let chainl1 e op =
 ;;
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
-let penot expr = token "!" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_not, expr)
 
-let peusb expr =
+let parse_unary_not expr =
+  token "!" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_not, expr)
+;;
+
+let parse_unary_minus expr =
   token "-" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_minus, expr)
 ;;
 
-let pesum = token "+" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_sum, exp1, exp2))
+let parse_sum = token "+" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_sum, exp1, exp2))
 
-let pemul =
+let parse_mult =
   token "*" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_multiply, exp1, exp2))
 ;;
 
-let pesub =
+let parse_subtraction =
   token "-" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_subtract, exp1, exp2))
 ;;
 
-let pediv = token "/" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_divide, exp1, exp2))
-let pemod = token "%" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_modulus, exp1, exp2))
-let peeql = token "==" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_equal, exp1, exp2))
+let parse_division =
+  token "/" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_divide, exp1, exp2))
+;;
 
-let penql =
+let parse_modulus =
+  token "%" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_modulus, exp1, exp2))
+;;
+
+let parse_equal =
+  token "==" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_equal, exp1, exp2))
+;;
+
+let parse_not_equal =
   token "!= " *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_not_equal, exp1, exp2))
 ;;
 
-let pegrt = token ">" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_greater, exp1, exp2))
+let parse_greater =
+  token ">" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_greater, exp1, exp2))
+;;
 
-let pegre =
+let parse_greater_equal =
   token ">=" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_greater_equal, exp1, exp2))
 ;;
 
-let pelss = token "<" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_less, exp1, exp2))
+let parse_less =
+  token "<" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_less, exp1, exp2))
+;;
 
-let pelse =
+let parse_less_equal =
   token "<=" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_less_equal, exp1, exp2))
 ;;
 
-let peand = token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1, exp2))
-let peor = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
-
-let parse_chan_receive =
-  lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
+let parse_and =
+  token "&&" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_and, exp1, exp2))
 ;;
 
+let parse_or = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
+let parse_receive = lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
 let parse_const_int = parse_int >>| fun num -> Const_int num
 
 let parse_const_string =
@@ -172,20 +186,31 @@ let parse_nested_calls_and_indices pexpr parse_func_or_array =
 ;;
 
 let parse_atomic_expr pexpr pblock =
-  choice [ parse_ident; parse_const pexpr pblock; parse_chan_receive ]
+  choice [ parse_ident; parse_const pexpr pblock; parse_receive ]
 ;;
 
 let parse_expr pblock =
   fix (fun pexpr ->
     let arg = parens pexpr <|> parse_atomic_expr pexpr pblock in
     let arg = parse_nested_calls_and_indices pexpr arg in
-    let arg = penot arg <|> arg in
-    let arg = peusb arg <|> arg in
-    let arg = chainl1 arg (pemul <|> pemod <|> pediv) in
-    let arg = chainl1 arg (pesum <|> pesub) in
-    let arg = chainl1 arg (pegre <|> pelse <|> pegrt <|> pelss <|> peeql <|> penql) in
-    let arg = chainr1 arg peand in
-    let arg = chainr1 arg peor in
+    let arg = parse_unary_not arg <|> arg in
+    let arg = parse_unary_minus arg <|> arg in
+    let arg = chainl1 arg (parse_mult <|> parse_modulus <|> parse_division) in
+    let arg = chainl1 arg (parse_sum <|> parse_subtraction) in
+    let arg =
+      chainl1
+        arg
+        (choice
+           [ parse_greater_equal
+           ; parse_less_equal
+           ; parse_greater
+           ; parse_less
+           ; parse_equal
+           ; parse_not_equal
+           ])
+    in
+    let arg = chainr1 arg parse_and in
+    let arg = chainr1 arg parse_or in
     let arg = fix (fun _ -> arg) <|> arg in
     arg)
 ;;

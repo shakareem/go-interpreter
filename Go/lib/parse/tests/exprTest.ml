@@ -112,10 +112,10 @@ let%expect_test "func call with multiple complex arguments" =
           (Expr_call ((Expr_ident "fac"), [(Expr_const (Const_int 25))]))]))|}]
 ;;
 
-(* bug *)
 let%expect_test "nested func call" =
   pp pp_expr pexpr "a()()()";
-  [%expect {|
+  [%expect
+    {|
     (Expr_call ((Expr_call ((Expr_call ((Expr_ident "a"), [])), [])), []))|}]
 ;;
 
@@ -126,7 +126,7 @@ let%expect_test "index with idents" =
   [%expect {| (Expr_index ((Expr_ident "array"), (Expr_ident "i"))) |}]
 ;;
 
-let%expect_test "index with condtants" =
+let%expect_test "index with constant array" =
   pp pp_expr pexpr {|[3]int{1, 2, 3}[0]|};
   [%expect
     {|
@@ -151,7 +151,8 @@ let%expect_test "index with function call in index" =
 
 let%expect_test "index with function call as an array" =
   pp pp_expr pexpr {|get_array(a, b)[1]|};
-  [%expect {|
+  [%expect
+    {|
     (Expr_index (
        (Expr_call
           ((Expr_ident "get_array"), [(Expr_ident "a"); (Expr_ident "b")])),
@@ -160,7 +161,8 @@ let%expect_test "index with function call as an array" =
 
 let%expect_test "nested indicies" =
   pp pp_expr pexpr {|a[1][2][3]|};
-  [%expect {|
+  [%expect
+    {|
     (Expr_index (
        (Expr_index ((Expr_index ((Expr_ident "a"), (Expr_const (Const_int 1)))),
           (Expr_const (Const_int 2)))),

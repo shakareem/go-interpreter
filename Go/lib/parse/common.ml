@@ -26,15 +26,7 @@ let is_keyword = function
 ;;
 
 let skip_whitespace = skip_many1 (satisfy Char.is_whitespace)
-
-let skip_line_whitespace =
-  skip_many1
-    (satisfy (fun c ->
-       match c with
-       | ' ' | '\t' -> true
-       | _ -> false))
-;;
-
+let skip_line_whitespace = skip_many1 (char ' ' <|> char '\t')
 let parse_line_comment = string "//" *> many_till any_char (char '\n') *> return ()
 let parse_block_comment = string "/*" *> many_till any_char (string "*/") *> return ()
 let parse_comment = parse_line_comment <|> parse_block_comment
@@ -46,7 +38,7 @@ let square_brackets p = char '[' *> ws *> p <* ws_line <* char ']'
 let curly_braces p = char '{' *> ws *> p <* ws_line <* char '}'
 let sep_by_comma p = sep_by (token ",") p
 let sep_by_comma1 p = sep_by1 (token ",") p
-let parse_stmt_sep = ws_line *> char '\n' *> ws <|> ws_line *> char ';' *> ws
+let parse_stmt_sep = ws_line *> (char '\n' <|> char ';') *> ws
 let parse_int = take_while1 Char.is_digit >>| fun num -> Int.of_string num
 
 let parse_ident =
@@ -62,7 +54,7 @@ let parse_ident =
   match first_char with
   | Some chr when is_first_char_valid chr ->
     let* ident = take_while is_valid_char in
-    if is_keyword ident then fail "This is a keyword" else return ident
+    if is_keyword ident then fail "Ident cannot be a keyword" else return ident
   | _ -> fail "Invalid ident"
 ;;
 

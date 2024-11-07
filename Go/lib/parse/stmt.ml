@@ -192,62 +192,73 @@ let parse_if pstmt pblock =
         | Stmt_if _ | Stmt_block _ -> return (Some else_body)
         | _ -> fail "Only block or if statement can be used after else"
       else return None
-      (* *> (parse_if pstmt pblock
-         >>| (fun if_stmt -> Some if_stmt)
-         <|> (pblock >>| fun block -> Some (Stmt_block block))
-         <|> fail "Only block or if statement can be ised after else")
-         <|> return None *)
     in
     return (Stmt_if { init; cond; if_body; else_body })
 ;;
 
-let parse_for pstmt pblock =
-  let parse_default_for =
-    let* init = pstmt >>| (fun stmt -> Some stmt) <|> return None in
-    let ok_init = if is_valid_init init then true else false in
-    let* _ = parse_stmt_sep in
-    let* cond = parse_expr pblock >>| (fun expr -> Some expr) <|> return None in
-    let* _ = parse_stmt_sep in
-    let* post =
-      let* next_char = peek_char_fail in
-      match next_char with
-      | '{' -> return None
-      | _ -> pstmt >>| fun stmt -> Some stmt
-    in
-    let ok_post =
-      match post with
-      | Some (Stmt_short_var_decl _)
-      | Some (Stmt_assign _)
-      | Some (Stmt_incr _)
-      | Some (Stmt_decr _)
-      | Some (Stmt_call _)
-      | None -> true
-      | _ -> false
-    in
-    if ok_init && ok_post
-    then return (init, cond, post)
-    else fail "Incorrect statement in for initialization or post statement"
-  in
-  let parse_for_only_cond =
+let parse_default_for pstmt pblock =
+  let* init = pstmt >>| Option.some <|> return None in
+  let ok_init = if is_valid_init init then true else false in
+  let* _ = parse_stmt_sep in
+  let* cond = parse_expr pblock >>| Option.some <|> return None in
+  let* _ = parse_stmt_sep in
+  let* post =
     let* next_char = peek_char_fail in
     match next_char with
-    | '{' -> return (None, None, None)
-    | _ -> parse_expr pblock >>| fun cond -> None, Some cond, None
+    | '{' -> return None
+    | _ -> pstmt >>| Option.some
   in
-  let parse_for_range_n =
-    let* _ = string "range" *> ws in
-    let* expr = parse_expr pblock in
-    return
-      ( Some (Stmt_short_var_decl (Short_decl_mult_init [ "i", Expr_const (Const_int 0) ]))
-      , Some (Expr_bin_oper (Bin_less, Expr_ident "i", expr))
-      , Some (Stmt_incr "i") )
+  let ok_post =
+    match post with
+    | Some (Stmt_short_var_decl _)
+    | Some (Stmt_assign _)
+    | Some (Stmt_incr _)
+    | Some (Stmt_decr _)
+    | Some (Stmt_call _)
+    | None -> true
+    | _ -> false
   in
-  let* _ = string "for" *> ws in
-  let* init, cond, post =
-    choice [ parse_default_for; parse_for_only_cond; parse_for_range_n ]
+  if not (ok_init && ok_post)
+  then fail "Incorrect statement in for initialization or post statement"
+  else
+    let* body = ws_line *> pblock in
+    return (Stmt_for { init; cond; post; body })
+;;
+
+let parse_for_only_cond pblock =
+  let* next_char = peek_char_fail in
+  let* cond =
+    match next_char with
+    | '{' -> return None
+    | _ -> parse_expr pblock >>| Option.some
   in
   let* body = ws_line *> pblock in
-  return (Stmt_for { init; cond; post; body })
+  return (Stmt_for { init = None; cond; post = None; body })
+;;
+
+let parse_for_range_n pblock =
+  let* _ = string "range" *> ws in
+  let* range = parse_expr pblock in
+  let* body = ws_line *> pblock in
+  return
+    (Stmt_for
+       { init =
+           Some
+             (Stmt_short_var_decl (Short_decl_mult_init [ "i", Expr_const (Const_int 0) ]))
+       ; cond = Some (Expr_bin_oper (Bin_less, Expr_ident "i", range))
+       ; post = Some (Stmt_incr "i")
+       ; body
+       })
+;;
+
+let parse_for pstmt pblock =
+  string "for"
+  *> ws
+  *> choice
+       [ parse_default_for pstmt pblock
+       ; parse_for_only_cond pblock
+       ; parse_for_range_n pblock
+       ]
 ;;
 
 let parse_range pblock =
