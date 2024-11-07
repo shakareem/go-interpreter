@@ -150,10 +150,9 @@ let parse_go pblock =
 ;;
 
 let parse_chan_send pblock =
-  lift2
-    (fun idt expr -> Stmt_chan_send (idt, expr))
-    (ws *> parse_ident)
-    (token "<-" *> parse_expr pblock)
+  let* chan = parse_ident in
+  let* expr = token "<-" *> parse_expr pblock in
+  return (Stmt_chan_send (chan, expr))
 ;;
 
 let parse_break = string "break" *> return Stmt_break

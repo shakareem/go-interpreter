@@ -6,25 +6,6 @@ open! Base
 open Ast
 open Angstrom
 
-let is_keyword = function
-  (* https://go.dev/ref/spec#Keywords *)
-  | "break"
-  | "case"
-  | "chan"
-  | "const"
-  | "defer"
-  | "else"
-  | "for"
-  | "func"
-  | "go"
-  | "if"
-  | "range"
-  | "return"
-  | "type"
-  | "var" -> true
-  | _ -> false
-;;
-
 let skip_whitespace = skip_many1 (satisfy Char.is_whitespace)
 let skip_line_whitespace = skip_many1 (char ' ' <|> char '\t')
 let parse_line_comment = string "//" *> many_till any_char (char '\n') *> return ()
@@ -40,6 +21,22 @@ let sep_by_comma p = sep_by (token ",") p
 let sep_by_comma1 p = sep_by1 (token ",") p
 let parse_stmt_sep = ws_line *> (char '\n' <|> char ';') *> ws
 let parse_int = take_while1 Char.is_digit >>| fun num -> Int.of_string num
+
+let is_keyword = function
+  (* https://go.dev/ref/spec#Keywords *)
+  | "break"
+  | "chan"
+  | "defer"
+  | "else"
+  | "for"
+  | "func"
+  | "go"
+  | "if"
+  | "range"
+  | "return"
+  | "var" -> true
+  | _ -> false
+;;
 
 let parse_ident =
   let is_first_char_valid = function

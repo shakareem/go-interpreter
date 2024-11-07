@@ -69,7 +69,7 @@ let parse_and =
 ;;
 
 let parse_or = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
-let parse_receive = lift (fun idt -> Expr_chan_recieve idt) (token "<-" *> parse_ident)
+let parse_receive = token "<-" *> parse_ident >>| fun chan -> Expr_chan_recieve chan
 let parse_const_int = parse_int >>| fun num -> Const_int num
 
 let parse_const_string =
@@ -140,12 +140,10 @@ let parse_const_array pexpr =
       add_similar_elements lst (Expr_const (Const_bool false)) (size - List.length lst)
     | _ -> lst
   in
-  lift3
-    (fun size type' list_exprs ->
-      Const_array (type', array_type_fix size type' list_exprs))
-    (square_brackets parse_int)
-    (ws *> parse_type)
-    (curly_braces (sep_by_comma pexpr <|> list []))
+  let* size = square_brackets parse_int in
+  let* type' = ws *> parse_type in
+  let* inits = curly_braces (sep_by_comma pexpr) in
+  return (Const_array (type', array_type_fix size type' inits))
 ;;
 
 let parse_const pexpr pblock =
