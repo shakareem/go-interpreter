@@ -42,6 +42,121 @@ let%expect_test "string with '\n'" =
   [%expect {| (Expr_const (Const_string "Hello\\n")) |}]
 ;;
 
+(********** simple exprs **********)
+
+let%expect_test "unary plus test" =
+  pp pp_expr pexpr {|+5|};
+  [%expect {| (Expr_const (Const_int 5)) |}]
+;;
+
+let%expect_test "unary minus test" =
+  pp pp_expr pexpr {|-5|};
+  [%expect {| (Expr_un_oper (Unary_minus, (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "unary not test" =
+  pp pp_expr pexpr {|!t|};
+  [%expect {| (Expr_un_oper (Unary_not, (Expr_ident "t"))) |}]
+;;
+
+let%expect_test "sum binop test" =
+  pp pp_expr pexpr {|4 + i|};
+  [%expect {| (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 4)), (Expr_ident "i"))) |}]
+;;
+
+let%expect_test "sub binop test" =
+  pp pp_expr pexpr {|a - 5|};
+  [%expect
+    {| (Expr_bin_oper (Bin_subtract, (Expr_ident "a"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "mul binop test" =
+  pp pp_expr pexpr {|t * 5|};
+  [%expect
+    {| (Expr_bin_oper (Bin_multiply, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "div binop test" =
+  pp pp_expr pexpr {|t / 5|};
+  [%expect
+    {| (Expr_bin_oper (Bin_divide, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "equality binop test" =
+  pp pp_expr pexpr {|t == 5|};
+  [%expect
+    {| (Expr_bin_oper (Bin_equal, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "less binop test" =
+  pp pp_expr pexpr {|t < 5|};
+  [%expect {| (Expr_bin_oper (Bin_less, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "greater binop test" =
+  pp pp_expr pexpr {|t > 5|};
+  [%expect
+    {| (Expr_bin_oper (Bin_greater, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "greater or equal binop test" =
+  pp pp_expr pexpr {|t >= 5|};
+  [%expect
+    {|
+      (Expr_bin_oper (Bin_greater_equal, (Expr_ident "t"),
+         (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "less or equal binop test" =
+  pp pp_expr pexpr {|t <= 5|};
+  [%expect
+    {|
+      (Expr_bin_oper (Bin_less_equal, (Expr_ident "t"), (Expr_const (Const_int 5))
+         )) |}]
+;;
+
+let%expect_test "and binop test" =
+  pp pp_expr pexpr {|t && 5|};
+  [%expect
+    {|
+      (Expr_bin_oper (Bin_and, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "or binop test" =
+  pp pp_expr pexpr {|t || 5|};
+  [%expect
+    {|
+      (Expr_bin_oper (Bin_or, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
+;;
+
+let%expect_test "expr with multiple unary pluses" =
+  pp pp_expr pexpr {|++1|};
+  [%expect {|
+    : no more choices|}]
+;;
+
+let%expect_test "expr with multiple unary minuses" =
+  pp pp_expr pexpr {|--1|};
+  [%expect {|
+    : no more choices|}]
+;;
+
+let%expect_test "expr with multiple unary minuses with parens" =
+  pp pp_expr pexpr {|+(+(+1))|};
+  [%expect {|
+    (Expr_const (Const_int 1))|}]
+;;
+
+let%expect_test "expr with multiple unary minuses with parens" =
+  pp pp_expr pexpr {|-(-(-1))|};
+  [%expect
+    {|
+    (Expr_un_oper (Unary_minus,
+       (Expr_un_oper (Unary_minus,
+          (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1))))))
+       ))|}]
+;;
+
 (********** const array **********)
 
 let%expect_test "expr simple array" =
@@ -86,7 +201,7 @@ let%expect_test "expr ident" =
     (Expr_ident "abcdefg__")|}]
 ;;
 
-let%expect_test "expr ident in braces" =
+let%expect_test "expr ident in parens" =
   pp pp_expr pexpr {|(abc)|};
   [%expect {|
     (Expr_ident "abc")|}]
@@ -124,6 +239,11 @@ let%expect_test "nested func call" =
 let%expect_test "index with idents" =
   pp pp_expr pexpr {|array[i]|};
   [%expect {| (Expr_index ((Expr_ident "array"), (Expr_ident "i"))) |}]
+;;
+
+let%expect_test "index with int" =
+  pp pp_expr pexpr {|array[1]|};
+  [%expect {| (Expr_index ((Expr_ident "array"), (Expr_const (Const_int 1)))) |}]
 ;;
 
 let%expect_test "index with constant array" =
@@ -171,12 +291,60 @@ let%expect_test "nested indicies" =
 
 (********** complex exprs **********)
 
+let%expect_test "order arithmetic test" =
+  pp pp_expr pexpr "1 + 2 * 3";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 1)),
+       (Expr_bin_oper (Bin_multiply, (Expr_const (Const_int 2)),
+          (Expr_const (Const_int 3))))
+       ))|}]
+;;
+
+let%expect_test "parens order arithmetic test" =
+  pp pp_expr pexpr "(1 + 2) * 3";
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_multiply,
+       (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 1)),
+          (Expr_const (Const_int 2)))),
+       (Expr_const (Const_int 3))))|}]
+;;
+
 let%expect_test "expr logical operations" =
   pp pp_expr pexpr {|a && (b || c)|};
   [%expect
     {|
     (Expr_bin_oper (Bin_and, (Expr_ident "a"),
        (Expr_bin_oper (Bin_or, (Expr_ident "b"), (Expr_ident "c")))))|}]
+;;
+
+let%expect_test "expr logical operations with binops" =
+  pp pp_expr pexpr {|a > b + 1 && (b + 2 <= c)|};
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_and,
+       (Expr_bin_oper (Bin_greater, (Expr_ident "a"),
+          (Expr_bin_oper (Bin_sum, (Expr_ident "b"), (Expr_const (Const_int 1))))
+          )),
+       (Expr_bin_oper (Bin_less_equal,
+          (Expr_bin_oper (Bin_sum, (Expr_ident "b"), (Expr_const (Const_int 2)))),
+          (Expr_ident "c")))
+       ))|}]
+;;
+
+let%expect_test "expr with multiple redundant parens" =
+  pp pp_expr pexpr {|((((((((4)) + i * ((5) + ((8) + p))))))))|};
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 4)),
+       (Expr_bin_oper (Bin_multiply, (Expr_ident "i"),
+          (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 5)),
+             (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 8)),
+                (Expr_ident "p")))
+             ))
+          ))
+       ))|}]
 ;;
 
 let%expect_test "expr bin mult and sum" =
@@ -188,6 +356,14 @@ let%expect_test "expr bin mult and sum" =
           (Expr_un_oper (Unary_minus, (Expr_const (Const_int 5)))),
           (Expr_ident "_r"))),
        (Expr_const (Const_int 8))))|}]
+;;
+
+let%expect_test "expr un and bin opers" =
+  pp pp_expr pexpr {|5 - -4|};
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_subtract, (Expr_const (Const_int 5)),
+       (Expr_un_oper (Unary_minus, (Expr_const (Const_int 4))))))|}]
 ;;
 
 let%expect_test "expr_call test" =
@@ -219,14 +395,6 @@ let%expect_test "fac_piece1 test" =
        ))|}]
 ;;
 
-let%expect_test "fac_piece2 test" =
-  pp pp_expr pexpr "n <= 1";
-  [%expect
-    {|
-    (Expr_bin_oper (Bin_less_equal, (Expr_ident "n"), (Expr_const (Const_int 1))
-       ))|}]
-;;
-
 let%expect_test "unary_min test" =
   pp pp_expr pexpr "-n + 2 + -1";
   [%expect
@@ -238,11 +406,24 @@ let%expect_test "unary_min test" =
 ;;
 
 let%expect_test "channel recieve test" =
-  pp pp_expr pexpr "<-c + 1";
+  pp pp_expr pexpr "<-c";
+  [%expect {|
+    (Expr_chan_recieve "c")|}]
+;;
+
+let%expect_test "channel recieve with unop test" =
+  pp pp_expr pexpr "-<-c";
+  [%expect {|
+    (Expr_un_oper (Unary_minus, (Expr_chan_recieve "c")))|}]
+;;
+
+let%expect_test "channel recieve with binop test" =
+  pp pp_expr pexpr "-<-c + 1";
   [%expect
     {|
-    (Expr_bin_oper (Bin_sum, (Expr_chan_recieve "c"), (Expr_const (Const_int 1))
-       ))|}]
+    (Expr_bin_oper (Bin_sum,
+       (Expr_un_oper (Unary_minus, (Expr_chan_recieve "c"))),
+       (Expr_const (Const_int 1))))|}]
 ;;
 
 (********** anon func **********)

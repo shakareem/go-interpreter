@@ -22,6 +22,7 @@ let parse_unary_minus expr =
   token "-" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_minus, expr)
 ;;
 
+let parse_unary_plus expr = token "+" *> expr >>= fun expr -> return @@ expr
 let parse_sum = token "+" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_sum, exp1, exp2))
 
 let parse_mult =
@@ -209,6 +210,6 @@ let parse_expr pblock =
     in
     let arg = chainr1 arg parse_and in
     let arg = chainr1 arg parse_or in
-    let arg = fix (fun _ -> arg) <|> arg in
+    let arg = parse_unary_plus arg <|> arg in
     arg)
 ;;
