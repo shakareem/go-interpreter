@@ -26,9 +26,13 @@ let parse_unary_plus =
   char '+' *> ws *> return (fun expr -> Expr_un_oper (Unary_plus, expr))
 ;;
 
+let parse_unary_receive =
+  string "<-" *> ws *> return (fun expr -> Expr_un_oper (Unary_recieve, expr))
+;;
+
 let parse_mult_unary_op pexpr =
   let rec helper acc =
-    choice [ parse_unary_not; parse_unary_minus; parse_unary_plus ]
+    choice [ parse_unary_not; parse_unary_minus; parse_unary_plus; parse_unary_receive ]
     >>= (fun new_oper -> helper (fun expr -> acc @@ new_oper @@ expr))
     <|> return acc
   in
@@ -84,7 +88,6 @@ let parse_and =
 ;;
 
 let parse_or = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp1, exp2))
-let parse_receive = token "<-" *> parse_ident >>| fun chan -> Expr_chan_recieve chan
 let parse_const_int = parse_int >>| fun num -> Const_int num
 
 let parse_const_string =
@@ -133,20 +136,23 @@ let rec default_init = function
   | Type_string -> Expr_const (Const_string "")
   | Type_bool -> Expr_const (Const_bool false)
   | Type_chan _ | Type_func _ -> Expr_const Const_nil
-  | Type_array (type', size) ->
-    Expr_const (Const_array (type', List.init size ~f:(fun _ -> default_init type')))
+  | Type_array (size, type') ->
+    Expr_const
+      (Const_array (size, type', List.init size ~f:(fun _ -> default_init type')))
 ;;
 
-(* let rec parse_array_inits pexpr = curly_braces (sep_by_comma pexpr) *)
-
 let parse_const_array pexpr =
-  let add_default_inits inits size type' =
-    inits @ List.init (size - List.length inits) ~f:(fun _ -> default_init type')
+  let* size =
+    square_brackets (parse_int >>| Option.some <|> string "..." *> return None)
   in
-  let* size = square_brackets parse_int in
   let* type' = ws *> parse_type in
   let* inits = curly_braces (sep_by_comma pexpr) in
-  return (Const_array (type', add_default_inits inits size type'))
+  let size =
+    match size with
+    | Some size -> size
+    | None -> List.length inits
+  in
+  return (Const_array (size, type', inits))
 ;;
 
 let parse_const pexpr pblock =
@@ -186,13 +192,9 @@ let parse_nested_calls_and_indices pexpr parse_func_or_array =
   parse_func_or_array >>= helper
 ;;
 
-let parse_atomic_expr pexpr pblock =
-  choice [ parse_ident; parse_const pexpr pblock; parse_receive ]
-;;
-
 let parse_expr pblock =
   fix (fun pexpr ->
-    let arg = parens pexpr <|> parse_atomic_expr pexpr pblock in
+    let arg = parens pexpr <|> parse_const pexpr pblock <|> parse_ident in
     let arg = parse_nested_calls_and_indices pexpr arg in
     let arg = parse_mult_unary_op arg in
     let arg = chainl1 arg (parse_mult <|> parse_modulus <|> parse_division) in

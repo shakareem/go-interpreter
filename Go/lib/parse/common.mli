@@ -14,7 +14,7 @@ val square_brackets : 'a t -> 'a t
 val curly_braces : 'a t -> 'a t
 val sep_by_comma : 'a t -> 'a list t
 val sep_by_comma1 : 'a t -> 'a list t
-val parse_int : size t
+val parse_int : int t
 
 (** Parses separator for the statements, [;] or [\n], returns nothing *)
 val parse_stmt_sep : unit t

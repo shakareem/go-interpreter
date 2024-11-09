@@ -2,19 +2,25 @@
 
 (** SPDX-License-Identifier: MIT *)
 
-type size = int [@@deriving show { with_path = false }]
-
 (** Data types *)
 type type' =
   | Type_int (** Integer type: [int] *)
   | Type_string (** String type: [string] *)
   | Type_bool (** Boolean type: [bool] *)
-  | Type_array of type' * size (** Array types such as [[6]int], [[0]string] *)
+  | Type_array of int * type' (** Array types such as [[6]int], [[0]string] *)
   | Type_func of type' list * type' list
   (** Function types such as [func()], [func(string) (bool, int)].
       Empty lists mean that there is no arguments or return values *)
-  | Type_chan of type' (** Channel type [chan int] *)
+  | Type_chan of chan_type
+  (** Channel type such as:
+      [chan int], [<-chan string], [chan<- bool] *)
 [@@deriving show { with_path = false }]
+
+(** Channel type *)
+and chan_type =
+  | Chan_bidirectional of type' (** Bidirectional channel type such as [chan int] *)
+  | Chan_receive of type' (** Receive-only channel type such as [<-chan string] *)
+  | Chan_send of type' (** Send-only channel type such as [chan<- bool] *)
 
 (** identificator for a variable or a function *)
 type ident = string [@@deriving show { with_path = false }]
@@ -41,6 +47,7 @@ type unary_oper =
   | Unary_not (** Unary negation: [!] *)
   | Unary_plus (** Unary plus: [+] *)
   | Unary_minus (** Unary minus: [-]*)
+  | Unary_recieve (** Unary channel recieve [<-] *)
 [@@deriving show { with_path = false }]
 
 (** Constructors for possible return constructions of a function.
@@ -62,7 +69,6 @@ type expr =
   (** Binary operations such as [a + b], [x || y] *)
   | Expr_un_oper of unary_oper * expr (** Unary operations such as [!z], [-f] *)
   | Expr_call of func_call (** See func_call type *)
-  | Expr_chan_recieve of ident (** Channel recieve operation [<-c] *)
 [@@deriving show { with_path = false }]
 
 (** Constants, a.k.a. literals *)
@@ -70,18 +76,13 @@ and const =
   | Const_int of int (** Integer constants such as [0], [123] *)
   | Const_string of string (** Constant strings such as ["my_string"] *)
   | Const_bool of bool (** Constant bool such as [false] *)
-  | Const_array of type' * expr list
+  | Const_array of int * type' * expr list
   (** Arrays such as [[3]int{3, get_four()}]. Empty list means that there is
       no initializers, array will be filled with default values
       ([0] for int, [""] for string and [false] for bool arrays) *)
   | Const_func of anon_func (** See anon_func type *)
   | Const_nil (** nil *)
 [@@deriving show { with_path = false }]
-(*
-   (** Array initializers that can be put inside curly braces *)
-   and array_init =
-   | Array_init_expr of expr
-   | Array_init_array of expr list *)
 
 (** An anonymous functions such as:
     [func() {}],

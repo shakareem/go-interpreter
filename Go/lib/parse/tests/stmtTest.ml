@@ -248,33 +248,33 @@ let%expect_test "stmt long single var decl without init with mult array type" =
     {|
     (Stmt_long_var_decl
        (Long_decl_mult_init (
-          (Some (Type_array ((Type_array ((Type_array (Type_bool, 1)), 3)), 2))),
+          (Some (Type_array (2, (Type_array (3, (Type_array (1, Type_bool))))))),
           [("a",
             (Expr_const
-               (Const_array ((Type_array ((Type_array (Type_bool, 1)), 3)),
+               (Const_array (2, (Type_array (3, (Type_array (1, Type_bool)))),
                   [(Expr_const
-                      (Const_array ((Type_array (Type_bool, 1)),
+                      (Const_array (3, (Type_array (1, Type_bool)),
                          [(Expr_const
-                             (Const_array (Type_bool,
+                             (Const_array (1, Type_bool,
                                 [(Expr_const (Const_bool false))])));
                            (Expr_const
-                              (Const_array (Type_bool,
+                              (Const_array (1, Type_bool,
                                  [(Expr_const (Const_bool false))])));
                            (Expr_const
-                              (Const_array (Type_bool,
+                              (Const_array (1, Type_bool,
                                  [(Expr_const (Const_bool false))])))
                            ]
                          )));
                     (Expr_const
-                       (Const_array ((Type_array (Type_bool, 1)),
+                       (Const_array (3, (Type_array (1, Type_bool)),
                           [(Expr_const
-                              (Const_array (Type_bool,
+                              (Const_array (1, Type_bool,
                                  [(Expr_const (Const_bool false))])));
                             (Expr_const
-                               (Const_array (Type_bool,
+                               (Const_array (1, Type_bool,
                                   [(Expr_const (Const_bool false))])));
                             (Expr_const
-                               (Const_array (Type_bool,
+                               (Const_array (1, Type_bool,
                                   [(Expr_const (Const_bool false))])))
                             ]
                           )))
@@ -326,21 +326,17 @@ let%expect_test "stmt long mult var decl with type" =
 
 let%expect_test "stmt long mult var decl with type" =
   pp pp_stmt pstmt {|var a, b, c [2]int = [2]int{1, 2}, [2]int{}, [2]int{10, 20}|};
-  [%expect
-    {|
+  [%expect{|
     (Stmt_long_var_decl
-       (Long_decl_mult_init ((Some (Type_array (Type_int, 2))),
+       (Long_decl_mult_init ((Some (Type_array (2, Type_int))),
           [("a",
             (Expr_const
-               (Const_array (Type_int,
+               (Const_array (2, Type_int,
                   [(Expr_const (Const_int 1)); (Expr_const (Const_int 2))]))));
-            ("b",
-             (Expr_const
-                (Const_array (Type_int,
-                   [(Expr_const (Const_int 0)); (Expr_const (Const_int 0))]))));
+            ("b", (Expr_const (Const_array (2, Type_int, []))));
             ("c",
              (Expr_const
-                (Const_array (Type_int,
+                (Const_array (2, Type_int,
                    [(Expr_const (Const_int 10)); (Expr_const (Const_int 20))]))))
             ]
           ))) |}]
@@ -655,13 +651,12 @@ let%expect_test "stmt range without idents" =
 
 let%expect_test "stmt range with const array" =
   pp pp_stmt pstmt {|for i, elem := range [3]int{1, 2, 3} {}|};
-  [%expect
-    {|
+  [%expect{|
     (Stmt_range
        Range_decl {index = "i"; element = (Some "elem");
          array =
          (Expr_const
-            (Const_array (Type_int,
+            (Const_array (3, Type_int,
                [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
                  (Expr_const (Const_int 3))]
                )));

@@ -189,13 +189,7 @@ let%expect_test "unary and binary exprs combined" =
 
 let%expect_test "expr simple array" =
   pp pp_expr pexpr {|[3]int{}|};
-  [%expect
-    {|
-    (Expr_const
-       (Const_array (Type_int,
-          [(Expr_const (Const_int 0)); (Expr_const (Const_int 0));
-            (Expr_const (Const_int 0))]
-          ))) |}]
+  [%expect {| (Expr_const (Const_array (3, Type_int, []))) |}]
 ;;
 
 let%expect_test "expr array with init" =
@@ -203,9 +197,18 @@ let%expect_test "expr array with init" =
   [%expect
     {|
     (Expr_const
-       (Const_array (Type_int,
+       (Const_array (3, Type_int,
+          [(Expr_const (Const_int 1)); (Expr_const (Const_int 2))]))) |}]
+;;
+
+let%expect_test "expr array with ..." =
+  pp pp_expr pexpr {|[...]int{1, 2, 3, 4}|};
+  [%expect
+    {|
+    (Expr_const
+       (Const_array (4, Type_int,
           [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
-            (Expr_const (Const_int 0))]
+            (Expr_const (Const_int 3)); (Expr_const (Const_int 4))]
           ))) |}]
 ;;
 
@@ -231,6 +234,12 @@ let%expect_test "expr ident" =
 
 let%expect_test "expr ident in parens" =
   pp pp_expr pexpr {|(abc)|};
+  [%expect {|
+    (Expr_ident "abc")|}]
+;;
+
+let%expect_test "expr ident in multiple parens" =
+  pp pp_expr pexpr {|(((abc)))|};
   [%expect {|
     (Expr_ident "abc")|}]
 ;;
@@ -280,7 +289,7 @@ let%expect_test "index with constant array" =
     {|
     (Expr_index (
        (Expr_const
-          (Const_array (Type_int,
+          (Const_array (3, Type_int,
              [(Expr_const (Const_int 1)); (Expr_const (Const_int 2));
                (Expr_const (Const_int 3))]
              ))),
@@ -436,13 +445,14 @@ let%expect_test "unary_min test" =
 let%expect_test "channel recieve test" =
   pp pp_expr pexpr "<-c";
   [%expect {|
-    (Expr_chan_recieve "c")|}]
+    (Expr_un_oper (Unary_recieve, (Expr_ident "c")))|}]
 ;;
 
 let%expect_test "channel recieve with unop test" =
   pp pp_expr pexpr "-<-c";
   [%expect {|
-    (Expr_un_oper (Unary_minus, (Expr_chan_recieve "c")))|}]
+    (Expr_un_oper (Unary_minus, (Expr_un_oper (Unary_recieve, (Expr_ident "c")))
+       ))|}]
 ;;
 
 let%expect_test "channel recieve with binop test" =
@@ -450,8 +460,18 @@ let%expect_test "channel recieve with binop test" =
   [%expect
     {|
     (Expr_bin_oper (Bin_sum,
-       (Expr_un_oper (Unary_minus, (Expr_chan_recieve "c"))),
+       (Expr_un_oper (Unary_minus,
+          (Expr_un_oper (Unary_recieve, (Expr_ident "c"))))),
        (Expr_const (Const_int 1))))|}]
+;;
+
+let%expect_test "channel neseted recieve test" =
+  pp pp_expr pexpr "<-<-<-c";
+  [%expect {|
+    (Expr_un_oper (Unary_recieve,
+       (Expr_un_oper (Unary_recieve,
+          (Expr_un_oper (Unary_recieve, (Expr_ident "c")))))
+       ))|}]
 ;;
 
 (********** anon func **********)

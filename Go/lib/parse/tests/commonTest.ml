@@ -67,12 +67,12 @@ let%expect_test "type string" =
 
 let%expect_test "type array of arrays" =
   pp pp_type' parse_type {|[4][0]string|};
-  [%expect {| (Type_array ((Type_array (Type_string, 0)), 4)) |}]
+  [%expect {| (Type_array (4, (Type_array (0, Type_string)))) |}]
 ;;
 
 let%expect_test "type array of functions" =
   pp pp_type' parse_type {|[4]func()|};
-  [%expect {| (Type_array ((Type_func ([], [])), 4)) |}]
+  [%expect {| (Type_array (4, (Type_func ([], [])))) |}]
 ;;
 
 let%expect_test "type simple func" =
@@ -99,7 +99,7 @@ let%expect_test "type func with mult args and without returns" =
   pp pp_type' parse_type {|func(int, string, bool, [4]int)|};
   [%expect
     {|
-    (Type_func ([Type_int; Type_string; Type_bool; (Type_array (Type_int, 4))],
+    (Type_func ([Type_int; Type_string; Type_bool; (Type_array (4, Type_int))],
        [])) |}]
 ;;
 
@@ -118,7 +118,7 @@ let%expect_test "type func that gets func and returns func" =
   [%expect
     {|
     (Type_func ([(Type_func ([Type_int], [Type_string]))],
-       [(Type_func ([(Type_array ((Type_array (Type_int, 5)), 4))], []))])) |}]
+       [(Type_func ([(Type_array (4, (Type_array (5, Type_int))))], []))])) |}]
 ;;
 
 let%expect_test "type func that returns func that returns func..." =
@@ -133,4 +133,34 @@ let%expect_test "type func that returns func that returns func..." =
            ))
          ]
        )) |}]
+;;
+
+let%expect_test "type bidirectional channel" =
+  pp pp_type' parse_type {|chan int|};
+  [%expect {|
+    (Type_chan (Chan_bidirectional Type_int)) |}]
+;;
+
+let%expect_test "type receive-only channel" =
+  pp pp_type' parse_type {|<- chan func()|};
+  [%expect {|
+    (Type_chan (Chan_receive (Type_func ([], [])))) |}]
+;;
+
+let%expect_test "type send-only channel" =
+  pp pp_type' parse_type {|chan<- [0]string]|};
+  [%expect {|
+    : end_of_input |}]
+;;
+
+let%expect_test "type send-only channel of bidirectional channel" =
+  pp pp_type' parse_type {|chan <- chan int]|};
+  [%expect {|
+    : end_of_input |}]
+;;
+
+let%expect_test "type with parens" =
+  pp pp_type' parse_type {|[3]([2]((func())))|};
+  [%expect {|
+    (Type_array (3, (Type_array (2, (Type_func ([], [])))))) |}]
 ;;

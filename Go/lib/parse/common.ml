@@ -84,10 +84,29 @@ let parse_func_type ptype =
 let parse_array_type ptype =
   let* size = square_brackets parse_int in
   let* type' = ws_line *> ptype in
-  return (Type_array (type', size))
+  return (Type_array (size, type'))
+;;
+
+let parse_chan_type ptype =
+  let determine_direction =
+    choice
+      [ string "<-" *> ws *> string "chan" *> return (fun type' -> Chan_receive type')
+      ; string "chan" *> ws *> string "<-" *> return (fun type' -> Chan_send type')
+      ; string "chan" *> return (fun type' -> Chan_bidirectional type')
+      ]
+  in
+  let* chan_direction = determine_direction <* ws in
+  let* chan_type = ptype in
+  return (Type_chan (chan_direction chan_type))
 ;;
 
 let parse_type =
   fix (fun ptype ->
-    choice [ parse_simple_type; parse_func_type ptype; parse_array_type ptype ])
+    parens ptype
+    <|> choice
+          [ parse_simple_type
+          ; parse_func_type ptype
+          ; parse_array_type ptype
+          ; parse_chan_type ptype
+          ])
 ;;
