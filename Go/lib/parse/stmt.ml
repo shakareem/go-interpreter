@@ -79,14 +79,6 @@ let parse_short_var_decl pblock =
   else return (Stmt_short_var_decl (Short_decl_mult_init (combine_lists lvalues rvalues)))
 ;;
 
-(*
-   let parse_nested_calls_and_indices pexpr parse_func_or_array =
-   let rec helper acc =
-   parse_expr_func_call pexpr acc <|> parse_index pexpr acc >>= helper <|> return acc
-   in
-   parse_func_or_array >>= helper
-   ;;
-*)
 let parse_assign_lvalues pblock =
   let parse_lvalue =
     let rec helper acc =

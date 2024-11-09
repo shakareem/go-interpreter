@@ -77,6 +77,11 @@ and const =
   | Const_func of anon_func (** See anon_func type *)
   | Const_nil (** nil *)
 [@@deriving show { with_path = false }]
+(*
+   (** Array initializers that can be put inside curly braces *)
+   and array_init =
+   | Array_init_expr of expr
+   | Array_init_array of expr list *)
 
 (** An anonymous functions such as:
     [func() {}],

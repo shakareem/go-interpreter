@@ -14,15 +14,29 @@ let chainl1 e op =
 
 let rec chainr1 e op = e >>= fun a -> op >>= (fun f -> chainr1 e op >>| f a) <|> return a
 
-let parse_unary_not expr =
-  token "!" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_not, expr)
+let parse_unary_not =
+  char '!' *> ws *> return (fun expr -> Expr_un_oper (Unary_not, expr))
 ;;
 
-let parse_unary_minus expr =
-  token "-" *> expr >>= fun expr -> return @@ Expr_un_oper (Unary_minus, expr)
+let parse_unary_minus =
+  char '-' *> ws *> return (fun expr -> Expr_un_oper (Unary_minus, expr))
 ;;
 
-let parse_unary_plus expr = token "+" *> expr >>= fun expr -> return @@ expr
+let parse_unary_plus =
+  char '+' *> ws *> return (fun expr -> Expr_un_oper (Unary_plus, expr))
+;;
+
+let parse_mult_unary_op pexpr =
+  let rec helper acc =
+    choice [ parse_unary_not; parse_unary_minus; parse_unary_plus ]
+    >>= (fun new_oper -> helper (fun expr -> acc @@ new_oper @@ expr))
+    <|> return acc
+  in
+  let* unary_operators = helper Fun.id in
+  let* expr = pexpr in
+  return (unary_operators expr)
+;;
+
 let parse_sum = token "+" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_sum, exp1, exp2))
 
 let parse_mult =
@@ -74,10 +88,7 @@ let parse_receive = token "<-" *> parse_ident >>| fun chan -> Expr_chan_recieve 
 let parse_const_int = parse_int >>| fun num -> Const_int num
 
 let parse_const_string =
-  let* _ = char '"' in
-  let* string = take_till (Char.equal '"') in
-  let* _ = char '"' in
-  return (Const_string string)
+  char '"' *> take_till (Char.equal '"') <* char '"' >>| fun string -> Const_string string
 ;;
 
 let parse_idents_with_types =
@@ -126,25 +137,16 @@ let rec default_init = function
     Expr_const (Const_array (type', List.init size ~f:(fun _ -> default_init type')))
 ;;
 
+(* let rec parse_array_inits pexpr = curly_braces (sep_by_comma pexpr) *)
+
 let parse_const_array pexpr =
-  let add_similar_elements lst element count =
-    let repeated_elements = List.init count ~f:(fun _ -> element) in
-    lst @ repeated_elements
-  in
-  let array_type_fix size type' lst =
-    match type' with
-    | Type_int ->
-      add_similar_elements lst (Expr_const (Const_int 0)) (size - List.length lst)
-    | Type_string ->
-      add_similar_elements lst (Expr_const (Const_string "")) (size - List.length lst)
-    | Type_bool ->
-      add_similar_elements lst (Expr_const (Const_bool false)) (size - List.length lst)
-    | _ -> lst
+  let add_default_inits inits size type' =
+    inits @ List.init (size - List.length inits) ~f:(fun _ -> default_init type')
   in
   let* size = square_brackets parse_int in
   let* type' = ws *> parse_type in
   let* inits = curly_braces (sep_by_comma pexpr) in
-  return (Const_array (type', array_type_fix size type' inits))
+  return (Const_array (type', add_default_inits inits size type'))
 ;;
 
 let parse_const pexpr pblock =
@@ -192,8 +194,7 @@ let parse_expr pblock =
   fix (fun pexpr ->
     let arg = parens pexpr <|> parse_atomic_expr pexpr pblock in
     let arg = parse_nested_calls_and_indices pexpr arg in
-    let arg = parse_unary_not arg <|> arg in
-    let arg = parse_unary_minus arg <|> arg in
+    let arg = parse_mult_unary_op arg in
     let arg = chainl1 arg (parse_mult <|> parse_modulus <|> parse_division) in
     let arg = chainl1 arg (parse_sum <|> parse_subtraction) in
     let arg =
@@ -210,6 +211,5 @@ let parse_expr pblock =
     in
     let arg = chainr1 arg parse_and in
     let arg = chainr1 arg parse_or in
-    let arg = parse_unary_plus arg <|> arg in
     arg)
 ;;

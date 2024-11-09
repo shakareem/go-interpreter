@@ -42,21 +42,39 @@ let%expect_test "string with '\n'" =
   [%expect {| (Expr_const (Const_string "Hello\\n")) |}]
 ;;
 
-(********** simple exprs **********)
+(********** arithmetics **********)
 
-let%expect_test "unary plus test" =
+let%expect_test "unary plus" =
   pp pp_expr pexpr {|+5|};
-  [%expect {| (Expr_const (Const_int 5)) |}]
+  [%expect {| (Expr_un_oper (Unary_plus, (Expr_const (Const_int 5)))) |}]
 ;;
 
-let%expect_test "unary minus test" =
+let%expect_test "unary minus" =
   pp pp_expr pexpr {|-5|};
   [%expect {| (Expr_un_oper (Unary_minus, (Expr_const (Const_int 5)))) |}]
 ;;
 
-let%expect_test "unary not test" =
+let%expect_test "unary not" =
   pp pp_expr pexpr {|!t|};
   [%expect {| (Expr_un_oper (Unary_not, (Expr_ident "t"))) |}]
+;;
+
+let%expect_test "multiple unary operators" =
+  pp pp_expr pexpr {|-+!--!+t|};
+  [%expect
+    {|
+    (Expr_un_oper (Unary_minus,
+       (Expr_un_oper (Unary_plus,
+          (Expr_un_oper (Unary_not,
+             (Expr_un_oper (Unary_minus,
+                (Expr_un_oper (Unary_minus,
+                   (Expr_un_oper (Unary_not,
+                      (Expr_un_oper (Unary_plus, (Expr_ident "t")))))
+                   ))
+                ))
+             ))
+          ))
+       )) |}]
 ;;
 
 let%expect_test "sum binop test" =
@@ -129,22 +147,14 @@ let%expect_test "or binop test" =
       (Expr_bin_oper (Bin_or, (Expr_ident "t"), (Expr_const (Const_int 5)))) |}]
 ;;
 
-let%expect_test "expr with multiple unary pluses" =
-  pp pp_expr pexpr {|++1|};
-  [%expect {|
-    : no more choices|}]
-;;
-
-let%expect_test "expr with multiple unary minuses" =
-  pp pp_expr pexpr {|--1|};
-  [%expect {|
-    : no more choices|}]
-;;
-
 let%expect_test "expr with multiple unary minuses with parens" =
   pp pp_expr pexpr {|+(+(+1))|};
-  [%expect {|
-    (Expr_const (Const_int 1))|}]
+  [%expect
+    {|
+    (Expr_un_oper (Unary_plus,
+       (Expr_un_oper (Unary_plus,
+          (Expr_un_oper (Unary_plus, (Expr_const (Const_int 1))))))
+       ))|}]
 ;;
 
 let%expect_test "expr with multiple unary minuses with parens" =
@@ -154,6 +164,24 @@ let%expect_test "expr with multiple unary minuses with parens" =
     (Expr_un_oper (Unary_minus,
        (Expr_un_oper (Unary_minus,
           (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1))))))
+       ))|}]
+;;
+
+let%expect_test "unary and binary exprs combined" =
+  pp pp_expr pexpr {|-(5 + 2) / +-(2 + 5)|};
+  [%expect
+    {|
+    (Expr_bin_oper (Bin_divide,
+       (Expr_un_oper (Unary_minus,
+          (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 5)),
+             (Expr_const (Const_int 2))))
+          )),
+       (Expr_un_oper (Unary_plus,
+          (Expr_un_oper (Unary_minus,
+             (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 2)),
+                (Expr_const (Const_int 5))))
+             ))
+          ))
        ))|}]
 ;;
 
