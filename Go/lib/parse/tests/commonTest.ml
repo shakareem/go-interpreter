@@ -148,15 +148,15 @@ let%expect_test "type receive-only channel" =
 ;;
 
 let%expect_test "type send-only channel" =
-  pp pp_type' parse_type {|chan<- [0]string]|};
+  pp pp_type' parse_type {|chan<- [0]string|};
   [%expect {|
-    : end_of_input |}]
+    (Type_chan (Chan_send (Type_array (0, Type_string)))) |}]
 ;;
 
 let%expect_test "type send-only channel of bidirectional channel" =
-  pp pp_type' parse_type {|chan <- chan int]|};
+  pp pp_type' parse_type {|chan <- chan int|};
   [%expect {|
-    : end_of_input |}]
+    (Type_chan (Chan_send (Type_chan (Chan_bidirectional Type_int)))) |}]
 ;;
 
 let%expect_test "type with parens" =
