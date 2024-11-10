@@ -55,13 +55,6 @@ let parse_ident =
   | _ -> fail "Invalid ident"
 ;;
 
-let parse_ident_not_blank =
-  let* ident = parse_ident in
-  match ident with
-  | "_" -> fail "Blank identifier is a write-only value"
-  | _ -> return ident
-;;
-
 let parse_simple_type =
   choice
     [ string "int" *> return Type_int

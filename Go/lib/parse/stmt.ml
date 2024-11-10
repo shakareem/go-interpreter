@@ -115,13 +115,8 @@ let parse_assign pblock =
   else return (Stmt_assign (Assign_mult_expr (combine_lists lvalues rvalues)))
 ;;
 
-let parse_incr =
-  parse_ident_not_blank <* ws_line <* string "++" >>| fun id -> Stmt_incr id
-;;
-
-let parse_decr =
-  parse_ident_not_blank <* ws_line <* string "--" >>| fun id -> Stmt_decr id
-;;
+let parse_incr = parse_ident <* ws_line <* string "++" >>| fun id -> Stmt_incr id
+let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr id
 
 let parse_func_call pblock =
   parse_expr pblock

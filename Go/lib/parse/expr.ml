@@ -165,7 +165,7 @@ let parse_const pexpr pblock =
   >>| fun const -> Expr_const const
 ;;
 
-let parse_ident = parse_ident_not_blank >>| fun ident -> Expr_ident ident
+let parse_expr_ident = parse_ident >>| fun ident -> Expr_ident ident
 
 let parse_expr_func_call pexpr func =
   let* args = parens (sep_by_comma pexpr) in
@@ -194,7 +194,7 @@ let parse_nested_calls_and_indices pexpr parse_func_or_array =
 
 let parse_expr pblock =
   fix (fun pexpr ->
-    let arg = parens pexpr <|> parse_const pexpr pblock <|> parse_ident in
+    let arg = parens pexpr <|> parse_const pexpr pblock <|> parse_expr_ident in
     let arg = parse_nested_calls_and_indices pexpr arg in
     let arg = parse_mult_unary_op arg in
     let arg = chainl1 arg (parse_mult <|> parse_modulus <|> parse_division) in

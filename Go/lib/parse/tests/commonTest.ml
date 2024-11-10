@@ -33,16 +33,6 @@ let%expect_test "ident with first char that is digit" =
   [%expect {| : Invalid ident |}]
 ;;
 
-let%expect_test "not blank ident" =
-  pp pp_ident parse_ident_not_blank {|abcdefg|};
-  [%expect {| "abcdefg" |}]
-;;
-
-let%expect_test "not blank ident with blank input" =
-  pp pp_ident parse_ident_not_blank {|_|};
-  [%expect {| : Blank identifier is a write-only value |}]
-;;
-
 (********** type **********)
 
 let%expect_test "incorrect type" =

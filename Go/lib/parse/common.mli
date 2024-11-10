@@ -23,7 +23,4 @@ val parse_stmt_sep : unit t
     and as function name (includes blank identifier [_]) *)
 val parse_ident : ident t
 
-(** Parses identifiers that are not blank ([_]) *)
-val parse_ident_not_blank : ident t
-
 val parse_type : type' t
