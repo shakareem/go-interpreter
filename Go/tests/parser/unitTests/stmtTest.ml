@@ -3,7 +3,7 @@
 (** SPDX-License-Identifier: MIT *)
 
 open Ast
-open Stmt
+open Parser.Stmt
 open Pp
 
 let pstmt = parse_stmt parse_block
@@ -235,8 +235,7 @@ let%expect_test "stmt assign mult unequal lvalues and rvalues" =
 
 let%expect_test "stmt long single var decl without init" =
   pp pp_stmt pstmt {|var a string|};
-  [%expect
-    {|
+  [%expect {|
     (Stmt_long_var_decl (Long_decl_no_init (Type_string, ["a"]))) |}]
 ;;
 
@@ -292,7 +291,8 @@ let%expect_test "stmt long mult var decl with type" =
 
 let%expect_test "stmt long mult var decl with type" =
   pp pp_stmt pstmt {|var a, b, c [2]int = [2]int{1, 2}, [2]int{}, [2]int{10, 20}|};
-  [%expect{|
+  [%expect
+    {|
     (Stmt_long_var_decl
        (Long_decl_mult_init ((Some (Type_array (2, Type_int))),
           [("a",
@@ -468,7 +468,8 @@ let%expect_test "stmt if with empty init" =
 
 let%expect_test "stmt if with wrong init" =
   pp pp_stmt pstmt {|if var a = 5; cond {}|};
-  [%expect {|
+  [%expect
+    {|
     Stmt_if {
       init =
       (Some (Stmt_long_var_decl
@@ -621,7 +622,8 @@ let%expect_test "stmt range without idents" =
 
 let%expect_test "stmt range with const array" =
   pp pp_stmt pstmt {|for i, elem := range [3]int{1, 2, 3} {}|};
-  [%expect{|
+  [%expect
+    {|
     (Stmt_range
        Range_decl {index = "i"; element = (Some "elem");
          array =

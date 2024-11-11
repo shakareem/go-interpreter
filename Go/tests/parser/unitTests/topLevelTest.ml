@@ -3,8 +3,8 @@
 (** SPDX-License-Identifier: MIT *)
 
 open Ast
+open Parser.TopLevel
 open Pp
-open TopLevel
 
 let%expect_test "file with one var decl with ws" =
   pp pp_file parse_file {|
@@ -13,9 +13,7 @@ let%expect_test "file with one var decl with ws" =
 // hey
 
 |};
-  [%expect
-    {|
-    [(Decl_var (Long_decl_no_init (Type_int, ["a"])))] |}]
+  [%expect {|[(Decl_var (Long_decl_no_init (Type_int, ["a"])))] |}]
 ;;
 
 let%expect_test "file with multiple var decls separated by semicolon" =
