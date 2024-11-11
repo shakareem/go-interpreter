@@ -6,19 +6,12 @@ open! Base
 open QCheck.Gen
 open Ast
 
-(*
-   надо запомнить про опшн
-   small_nat
-*)
-
 let int5 = int_range 0 5
 let int1_5 = int_range 1 5
-let list5 : 'a t -> 'a list t = list_size int5
-let list1_5 : 'a t -> 'a list t = list_size int1_5
-let gen_ident_first_char = oneof [ char_range 'a' 'b'; char_range 'A' 'B'; return '_' ]
+let gen_ident_first_char = oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_' ]
 
 let gen_ident_char =
-  oneof [ char_range 'a' 'b'; char_range 'A' 'B'; return '_'; char_range '0' '9' ]
+  oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_'; char_range '0' '9' ]
 ;;
 
 let gen_ident =
@@ -36,8 +29,8 @@ let gen_array_type gtype =
 ;;
 
 let gen_func_type gtype =
-  let* arg_types = list5 gtype in
-  let* return_types = list5 gtype in
+  let* arg_types = (list_size int5) gtype in
+  let* return_types = (list_size int5) gtype in
   return (Type_func (arg_types, return_types))
 ;;
 
@@ -50,17 +43,19 @@ let gen_chan_type gtype =
 ;;
 
 let gen_type =
-  fix
-    (fun _ gtype ->
+  sized_size (int_range 0 3)
+  @@ fix (fun self n ->
+    match n with
+    | 0 -> oneofl [ Type_int; Type_string; Type_bool ]
+    | n ->
       oneof
         [ return Type_int
         ; return Type_string
         ; return Type_bool
-        ; gen_array_type gtype
-        ; gen_func_type gtype
-        ; gen_chan_type gtype
+        ; gen_array_type (self (n - 1))
+        ; gen_func_type (self (n - 1))
+        ; gen_chan_type (self (n - 1))
         ])
-    (return Type_int)
 ;;
 
 (********** const **********)
@@ -84,18 +79,18 @@ let gen_const_array gexpr =
 
 let gen_return_values =
   let gen_only_types =
-    let* types = list1_5 gen_type in
+    let* types = (list_size int1_5) gen_type in
     return (Only_types types)
   in
   let gen_ident_and_types =
-    let* idents_and_types = list1_5 (pair gen_ident gen_type) in
+    let* idents_and_types = (list_size int1_5) (pair gen_ident gen_type) in
     return (Ident_and_types idents_and_types)
   in
   oneof [ gen_only_types; gen_ident_and_types ]
 ;;
 
 let gen_anon_func gblock =
-  let* args = list1_5 (pair gen_ident gen_type) in
+  let* args = (list_size int1_5) (pair gen_ident gen_type) in
   let* returns = option gen_return_values in
   let* body = gblock in
   return { args; returns; body }
@@ -131,3 +126,202 @@ let gen_bin_op =
 ;;
 
 let gen_un_op = oneofl [ Unary_not; Unary_plus; Unary_minus; Unary_recieve ]
+
+let gen_expr_const gexpr gblock =
+  let* const = gen_const gexpr gblock in
+  return (Expr_const const)
+;;
+
+let gen_expr_ident =
+  let* ident = gen_ident in
+  return (Expr_ident ident)
+;;
+
+let gen_expr_index gexpr =
+  let* array = gexpr in
+  let* index = gexpr in
+  return (Expr_index (array, index))
+;;
+
+let gen_expr_bin_oper gexpr =
+  let* bin_op = gen_bin_op in
+  let* left_operand = gexpr in
+  let* right_operand = gexpr in
+  return (Expr_bin_oper (bin_op, left_operand, right_operand))
+;;
+
+let gen_expr_un_oper gexpr =
+  let* operator = gen_un_op in
+  let* operand = gexpr in
+  return (Expr_un_oper (operator, operand))
+;;
+
+let gen_func_call gexpr =
+  let* func = gexpr in
+  let* args = (list_size int5) gexpr in
+  return (func, args)
+;;
+
+let gen_expr_func_call gexpr =
+  let* call = gen_func_call gexpr in
+  return (Expr_call call)
+;;
+
+let gen_expr gblock =
+  sized_size (int_range 0 10)
+  @@ fix (fun self n ->
+    match n with
+    | 0 -> gen_expr_ident
+    | n ->
+      oneof
+        [ gen_expr_ident
+        ; gen_expr_const (self (n - 1)) gblock
+        ; gen_expr_index (self (n - 1))
+        ; gen_expr_bin_oper (self (n - 1))
+        ; gen_expr_un_oper (self (n - 1))
+        ; gen_expr_func_call (self (n - 1))
+        ])
+;;
+
+(********** stmt **********)
+
+let gen_long_decl gblock =
+  let* type' = gen_type in
+  let* idents = list_size int1_5 gen_ident in
+  oneof
+    [ return (Long_decl_no_init (type', idents))
+    ; (let* assigns = list_size int1_5 (pair gen_ident (gen_expr gblock)) in
+       return (Long_decl_mult_init (Option.some type', assigns)))
+    ; (let* call = gen_expr_func_call (gen_expr gblock) in
+       return (Long_decl_one_init (Option.some type', idents, call)))
+    ]
+;;
+
+let gen_stmt_long_decl gblock =
+  let* decl = gen_long_decl gblock in
+  return (Stmt_long_var_decl decl)
+;;
+
+let gen_stmt_short_decl gblock =
+  let* decl =
+    oneof
+      [ (let* assigns = list_size int1_5 (pair gen_ident (gen_expr gblock)) in
+         return (Short_decl_mult_init assigns))
+      ; (let* idents = list_size int1_5 gen_ident in
+         let* call = gen_expr_func_call (gen_expr gblock) in
+         return (Short_decl_one_init (idents, call)))
+      ]
+  in
+  return (Stmt_short_var_decl decl)
+;;
+
+let gen_stmt_incr_decr =
+  let* ident = gen_ident in
+  oneofl [ Stmt_incr ident; Stmt_decr ident ]
+;;
+
+let gen_stmt_break_continue = oneofl [ Stmt_break; Stmt_continue ]
+
+let gen_assign_lvalue gblock =
+  let gen_lvalue_ident =
+    let* ident = gen_ident in
+    return (Lvalue_ident ident)
+  in
+  sized_size (int_range 0 3)
+  @@ fix (fun self n ->
+    match n with
+    | 0 -> gen_lvalue_ident
+    | n ->
+      oneof
+        [ gen_lvalue_ident
+        ; (let* array = self (n - 1) in
+           let* index = gen_expr gblock in
+           return (Lvalue_array_index (array, index)))
+        ])
+;;
+
+let gen_stmt_assign gblock =
+  let* assign =
+    oneof
+      [ (let* assigns =
+           list_size int1_5 (pair (gen_assign_lvalue gblock) (gen_expr gblock))
+         in
+         return (Assign_mult_expr assigns))
+      ; (let* lvalues = list_size int1_5 (gen_assign_lvalue gblock) in
+         let* call = gen_expr_func_call (gen_expr gblock) in
+         return (Assign_one_expr (lvalues, call)))
+      ]
+  in
+  return (Stmt_assign assign)
+;;
+
+let gen_stmt_return gblock =
+  let* exprs = list_size int5 (gen_expr gblock) in
+  return (Stmt_return exprs)
+;;
+
+let gen_stmt_chan_send gblock =
+  let* chan = gen_ident in
+  let* expr = gen_expr gblock in
+  return (Stmt_chan_send (chan, expr))
+;;
+
+let gen_stmt_call gblock =
+  let* call = gen_func_call (gen_expr gblock) in
+  return (Stmt_call call)
+;;
+
+let gen_stmt_defer_go gblock =
+  let* call = gen_func_call (gen_expr gblock) in
+  oneofl [ Stmt_defer call; Stmt_go call ]
+;;
+
+let gen_block gstmt = list_size int5 gstmt
+
+let gen_stmt_block gstmt =
+  let* block = gen_block gstmt in
+  return (Stmt_block block)
+;;
+
+(* for if and for init and post *)
+let gen_init_and_post_stmt gstmt =
+  oneof
+    [ gen_stmt_short_decl (gen_block gstmt)
+    ; gen_stmt_assign (gen_block gstmt)
+    ; gen_stmt_incr_decr
+    ; gen_stmt_call (gen_block gstmt)
+    ]
+;;
+
+let gen_stmt_if gstmt =
+  sized_size (int_range 0 2)
+  @@ fix (fun self n ->
+    let* init = option (gen_init_and_post_stmt gstmt) in
+    let* cond = gen_expr (gen_block gstmt) in
+    let* if_body = gen_block gstmt in
+    let* else_body =
+      match n with
+      | 0 -> return None
+      | n -> oneof [ return None; option (oneof [ self (n - 1); gen_stmt_block gstmt ]) ]
+    in
+    return (Stmt_if { init; cond; if_body; else_body }))
+;;
+
+let gen_stmt_for gstmt =
+  let* init = option (gen_init_and_post_stmt gstmt) in
+  let* cond = option (gen_expr (gen_block gstmt)) in
+  let* post = option (gen_init_and_post_stmt gstmt) in
+  let* body = gen_block gstmt in
+  return (Stmt_for { init; cond; post; body })
+;;
+
+let gen_stmt_range gstmt =
+  let* index = gen_ident in
+  let* element = option gen_ident in
+  let* array = gen_expr (gen_block gstmt) in
+  let* body = gen_block gstmt in
+  oneofl
+    [ Stmt_range (Range_decl { index; element; array; body })
+    ; Stmt_range (Range_assign { index; element; array; body })
+    ]
+;;
