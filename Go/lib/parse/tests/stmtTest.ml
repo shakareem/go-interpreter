@@ -69,7 +69,7 @@ let%expect_test "incr stmt with ws_line" =
 
 let%expect_test "incr stmt with blank ident" =
   pp pp_stmt pstmt {|_++|};
-  [%expect {| : Incorrect statement |}]
+  [%expect {| (Stmt_incr "_") |}]
 ;;
 
 let%expect_test "decr stmt" =
@@ -84,7 +84,7 @@ let%expect_test "decr stmt with ws_line" =
 
 let%expect_test "decr stmt with blank ident" =
   pp pp_stmt pstmt {|_--|};
-  [%expect {| : Incorrect statement |}]
+  [%expect {| (Stmt_decr "_") |}]
 ;;
 
 (********** return **********)
@@ -237,9 +237,7 @@ let%expect_test "stmt long single var decl without init" =
   pp pp_stmt pstmt {|var a string|};
   [%expect
     {|
-    (Stmt_long_var_decl
-       (Long_decl_mult_init ((Some Type_string),
-          [("a", (Expr_const (Const_string "")))]))) |}]
+    (Stmt_long_var_decl (Long_decl_no_init (Type_string, ["a"]))) |}]
 ;;
 
 let%expect_test "stmt long single var decl without init with mult array type" =
@@ -247,41 +245,9 @@ let%expect_test "stmt long single var decl without init with mult array type" =
   [%expect
     {|
     (Stmt_long_var_decl
-       (Long_decl_mult_init (
-          (Some (Type_array (2, (Type_array (3, (Type_array (1, Type_bool))))))),
-          [("a",
-            (Expr_const
-               (Const_array (2, (Type_array (3, (Type_array (1, Type_bool)))),
-                  [(Expr_const
-                      (Const_array (3, (Type_array (1, Type_bool)),
-                         [(Expr_const
-                             (Const_array (1, Type_bool,
-                                [(Expr_const (Const_bool false))])));
-                           (Expr_const
-                              (Const_array (1, Type_bool,
-                                 [(Expr_const (Const_bool false))])));
-                           (Expr_const
-                              (Const_array (1, Type_bool,
-                                 [(Expr_const (Const_bool false))])))
-                           ]
-                         )));
-                    (Expr_const
-                       (Const_array (3, (Type_array (1, Type_bool)),
-                          [(Expr_const
-                              (Const_array (1, Type_bool,
-                                 [(Expr_const (Const_bool false))])));
-                            (Expr_const
-                               (Const_array (1, Type_bool,
-                                  [(Expr_const (Const_bool false))])));
-                            (Expr_const
-                               (Const_array (1, Type_bool,
-                                  [(Expr_const (Const_bool false))])))
-                            ]
-                          )))
-                    ]
-                  ))))
-            ]
-          ))) |}]
+       (Long_decl_no_init (
+          (Type_array (2, (Type_array (3, (Type_array (1, Type_bool)))))),
+          ["a"]))) |}]
 ;;
 
 let%expect_test "stmt long single var decl no type" =
@@ -503,7 +469,11 @@ let%expect_test "stmt if with empty init" =
 let%expect_test "stmt if with wrong init" =
   pp pp_stmt pstmt {|if var a = 5; cond {}|};
   [%expect {|
-    : Incorrect statement |}]
+    Stmt_if {
+      init =
+      (Some (Stmt_long_var_decl
+               (Long_decl_mult_init (None, [("a", (Expr_const (Const_int 5)))]))));
+      cond = (Expr_ident "cond"); if_body = []; else_body = None} |}]
 ;;
 
 let%expect_test "stmt if with else that is a block" =

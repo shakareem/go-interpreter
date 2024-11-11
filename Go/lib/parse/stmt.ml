@@ -26,9 +26,7 @@ let parse_long_var_decl pblock =
   if not with_init
   then (
     match vars_type with
-    | Some t ->
-      let rvalues = List.init (List.length lvalues) ~f:(fun _ -> default_init t) in
-      return (Long_decl_mult_init (Some t, combine_lists lvalues rvalues))
+    | Some t -> return (Long_decl_no_init (t, lvalues))
     | None -> fail "Long variable declaration without initializers should have type")
   else
     let* rvalues = parse_rvalues pblock in
@@ -150,41 +148,27 @@ let parse_return pblock =
   >>| fun expr_list -> Stmt_return expr_list
 ;;
 
-let is_valid_init = function
-  | Some (Stmt_short_var_decl _)
-  | Some (Stmt_assign _)
-  | Some (Stmt_incr _)
-  | Some (Stmt_decr _)
-  | Some (Stmt_call _)
-  | None -> true
-  | _ -> false
-;;
-
 let parse_if pstmt pblock =
   let* _ = string "if" *> ws in
   let* init = pstmt >>| (fun init -> Some init) <|> return None in
-  if not (is_valid_init init)
-  then fail "Incorrect statement in if initialization"
-  else
-    let* _ = parse_stmt_sep <|> return () in
-    let* cond = ws *> parse_expr pblock in
-    let* if_body = ws_line *> pblock <* ws_line in
-    let* else_body =
-      let* else_body_exists = string "else" *> ws *> return true <|> return false in
-      if else_body_exists
-      then
-        let* else_body = pstmt in
-        match else_body with
-        | Stmt_if _ | Stmt_block _ -> return (Some else_body)
-        | _ -> fail "Only block or if statement can be used after else"
-      else return None
-    in
-    return (Stmt_if { init; cond; if_body; else_body })
+  let* _ = parse_stmt_sep <|> return () in
+  let* cond = ws *> parse_expr pblock in
+  let* if_body = ws_line *> pblock <* ws_line in
+  let* else_body =
+    let* else_body_exists = string "else" *> ws *> return true <|> return false in
+    if else_body_exists
+    then
+      let* else_body = pstmt in
+      match else_body with
+      | Stmt_if _ | Stmt_block _ -> return (Some else_body)
+      | _ -> fail "Only block or if statement can be used after else"
+    else return None
+  in
+  return (Stmt_if { init; cond; if_body; else_body })
 ;;
 
 let parse_default_for pstmt pblock =
   let* init = pstmt >>| Option.some <|> return None in
-  let ok_init = if is_valid_init init then true else false in
   let* _ = parse_stmt_sep in
   let* cond = parse_expr pblock >>| Option.some <|> return None in
   let* _ = parse_stmt_sep in
@@ -194,21 +178,8 @@ let parse_default_for pstmt pblock =
     | '{' -> return None
     | _ -> pstmt >>| Option.some
   in
-  let ok_post =
-    match post with
-    | Some (Stmt_short_var_decl _)
-    | Some (Stmt_assign _)
-    | Some (Stmt_incr _)
-    | Some (Stmt_decr _)
-    | Some (Stmt_call _)
-    | None -> true
-    | _ -> false
-  in
-  if not (ok_init && ok_post)
-  then fail "Incorrect statement in for initialization or post statement"
-  else
-    let* body = ws_line *> pblock in
-    return (Stmt_for { init; cond; post; body })
+  let* body = ws_line *> pblock in
+  return (Stmt_for { init; cond; post; body })
 ;;
 
 let parse_for_only_cond pblock =
