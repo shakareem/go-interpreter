@@ -1,7 +1,6 @@
-(library
+(executable
  (name ppParseId)
  (libraries ast parser qcheck)
- (inline_tests)
  (instrumentation
   (backend bisect_ppx))
  (preprocess
