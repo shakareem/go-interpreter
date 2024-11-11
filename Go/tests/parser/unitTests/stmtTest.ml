@@ -470,11 +470,7 @@ let%expect_test "stmt if with wrong init" =
   pp pp_stmt pstmt {|if var a = 5; cond {}|};
   [%expect
     {|
-    Stmt_if {
-      init =
-      (Some (Stmt_long_var_decl
-               (Long_decl_mult_init (None, [("a", (Expr_const (Const_int 5)))]))));
-      cond = (Expr_ident "cond"); if_body = []; else_body = None} |}]
+    : Incorrect statement |}]
 ;;
 
 let%expect_test "stmt if with else that is a block" =

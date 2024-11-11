@@ -325,3 +325,42 @@ let gen_stmt_range gstmt =
     ; Stmt_range (Range_assign { index; element; array; body })
     ]
 ;;
+
+let gen_stmt =
+  sized_size (int_range 0 5)
+  @@ fix (fun self n ->
+    match n with
+    | 0 -> oneof [ gen_stmt_incr_decr; gen_stmt_break_continue ]
+    | n ->
+      let gblock = gen_block (self (n - 1)) in
+      oneof
+        [ gen_stmt_incr_decr
+        ; gen_stmt_break_continue
+        ; gen_stmt_long_decl gblock
+        ; gen_stmt_short_decl gblock
+        ; gen_stmt_assign gblock
+        ; gen_stmt_return gblock
+        ; gen_stmt_block (self (n - 1))
+        ; gen_stmt_chan_send gblock
+        ; gen_stmt_call gblock
+        ; gen_stmt_defer_go gblock
+        ; gen_stmt_if (self (n - 1))
+        ; gen_stmt_for (self (n - 1))
+        ; gen_stmt_range (self (n - 1))
+        ])
+;;
+
+(********** top decl **********)
+
+let gen_var_top_decl =
+  let* decl = gen_long_decl (gen_block gen_stmt) in
+  return (Decl_var decl)
+;;
+
+let gen_func_top_decl =
+  let* ident = gen_ident in
+  let* func = gen_anon_func (gen_block gen_stmt) in
+  return (Decl_func (ident, func))
+;;
+
+let gen_file = list_size (int_range 0 10) (oneof [ gen_var_top_decl; gen_func_top_decl ])
