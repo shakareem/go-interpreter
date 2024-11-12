@@ -231,6 +231,20 @@ let rec print_stmt fmt stmt =
     print_func_call fmt cl (print_expr fmt)
 ;;
 
+let print_func_decl fmt dlc =
+  let idnt, ls = dlc in
+  fprintf fmt "func %s" idnt;
+  print_expr fmt (Expr_const (Const_func ls))
+;;
+
+let print_top_decl fmt dcl =
+  match dcl with
+  | Decl_var lvd -> print_stmt fmt (Stmt_long_var_decl lvd)
+  | Decl_func fdl -> print_func_decl fmt fdl
+;;
+
+let print_file fmt dcl = List.iter (print_top_decl fmt) dcl
+
 (*
    let%expect_test "arithmetic" =
    print_expr
