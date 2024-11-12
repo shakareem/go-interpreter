@@ -98,21 +98,19 @@ let print_func_call pexpr call =
   asprintf "%s(%s)" (pexpr func) (sep_by_comma args pexpr)
 ;;
 
-let print_expr pblock expr =
-  let rec pexpr = function
-    | Expr_const const -> print_const pexpr pblock const
-    | Expr_ident id -> id
-    | Expr_index (array, index) -> asprintf "%s[%s]" (pexpr array) (pexpr index)
-    | Expr_bin_oper (operator, left_operand, right_operand) ->
-      asprintf
-        "%s %s %s"
-        (pexpr left_operand)
-        (print_bin_op operator)
-        (pexpr right_operand)
-    | Expr_un_oper (operator, operand) -> print_un_op operator ^ pexpr operand
-    | Expr_call call -> print_func_call pexpr call
-  in
-  pexpr expr
+let rec print_expr pblock = function
+  | Expr_const const -> print_const (print_expr pblock) pblock const
+  | Expr_ident id -> id
+  | Expr_index (array, index) ->
+    asprintf "%s[%s]" ((print_expr pblock) array) ((print_expr pblock) index)
+  | Expr_bin_oper (operator, left_operand, right_operand) ->
+    asprintf
+      "%s %s %s"
+      ((print_expr pblock) left_operand)
+      (print_bin_op operator)
+      ((print_expr pblock) right_operand)
+  | Expr_un_oper (operator, operand) -> print_un_op operator ^ (print_expr pblock) operand
+  | Expr_call call -> print_func_call (print_expr pblock) call
 ;;
 
 let print_long_decl pblock = function
@@ -174,6 +172,68 @@ let print_assign pblock = function
       (print_expr pblock init)
 ;;
 
+let print_if pstmt pblock = function
+  | Stmt_if { init; cond; if_body; else_body } ->
+    let print_init =
+      match init with
+      | Some init -> pstmt init
+      | None -> ""
+    in
+    let print_else_body =
+      match else_body with
+      | Some else_body -> "else " ^ pstmt else_body
+      | None -> ""
+    in
+    asprintf
+      "if %s; %s %s %s"
+      print_init
+      (print_expr pblock cond)
+      (pblock if_body)
+      print_else_body
+  | _ -> ""
+;;
+
+let print_for pstmt pblock = function
+  | Stmt_for { init; cond; post; body } ->
+    let print_init =
+      match init with
+      | Some init -> pstmt init
+      | None -> ""
+    in
+    let print_cond =
+      match cond with
+      | Some cond -> print_expr pblock cond
+      | None -> ""
+    in
+    let print_post =
+      match post with
+      | Some post -> pstmt post
+      | None -> ""
+    in
+    asprintf "for %s; %s; %s %s" print_init print_cond print_post (pblock body)
+  | _ -> ""
+;;
+
+let print_range pblock range =
+  let index, element, array, body, operator =
+    match range with
+    | Range_decl { index; element; array; body } -> index, element, array, body, ":="
+    | Range_assign { index; element; array; body } -> index, element, array, body, "="
+  in
+  let print_element =
+    match element with
+    | Some elem -> ", " ^ elem
+    | None -> ""
+  in
+  asprintf
+    "for %s%s %s range %s %s"
+    index
+    print_element
+    operator
+    (print_expr pblock array)
+    (pblock body)
+;;
+
 let rec print_stmt pblock = function
   | Stmt_long_var_decl decl -> print_long_decl pblock decl
   | Stmt_short_var_decl decl -> print_short_decl pblock decl
@@ -188,66 +248,10 @@ let rec print_stmt pblock = function
   | Stmt_defer call -> "defer " ^ print_func_call (print_expr pblock) call
   | Stmt_go call -> "go " ^ print_func_call (print_expr pblock) call
   | Stmt_chan_send (chan, expr) -> asprintf "%s <- %s" chan (print_expr pblock expr)
-  | Stmt_if _ -> ""
-  | Stmt_for _ -> ""
-  | Stmt_range _ -> ""
+  | Stmt_if _ as if_stmt -> print_if (print_stmt pblock) pblock if_stmt
+  | Stmt_for _ as for_stmt -> print_for (print_stmt pblock) pblock for_stmt
+  | Stmt_range range -> print_range pblock range
 ;;
-
-(* | Stmt_if usl ->
-    "if ";
-    (match usl.init with
-     | Some x ->
-       print_stmt x;
-       "; "
-     | None -> " ");
-    print_expr usl.cond;
-    "{ ";
-    print_block usl.if_body print_stmt;
-    " }";
-    (match usl.else_body with
-     | Some x ->
-       "else { ";
-       print_stmt x;
-       " }"
-     | None -> " ")
-  | Stmt_for usl ->
-    "for ";
-    (match usl.init with
-     | Some x ->
-       print_stmt x;
-       "; "
-     | None -> " ");
-    (match usl.cond with
-     | Some x ->
-       print_expr x;
-       "; "
-     | None -> " ");
-    (match usl.post with
-     | Some x ->
-       print_stmt x;
-       "; "
-     | None -> " ");
-    "{ ";
-    print_block usl.body print_stmt;
-    " }"
-  | Stmt_chan_send (idnt, ex) ->
-    "%s " idnt;
-    " <- ";
-    print_expr ex
-  | Stmt_range _ -> " "
-  | Stmt_break -> " break "
-  | Stmt_continue -> " continue "
-  | Stmt_return exl ->
-    " return ";
-    List.iter print_expr exl
-  | Stmt_block bl -> print_block bl print_stmt
-  | Stmt_call cl -> print_func_call cl print_expr
-  | Stmt_defer cl ->
-    "defer ";
-    print_func_call cl print_expr
-  | Stmt_go cl ->
-    "go ";
-    print_func_call cl print_expr *)
 
 let rec print_block block =
   asprintf "{\n%s\n}" (sep_by "\n" block (print_stmt print_block))
