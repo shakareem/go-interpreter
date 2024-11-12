@@ -1,0 +1,3 @@
+(cram
+ (applies_to parser_test)
+ (deps ../bin/REPL.exe))

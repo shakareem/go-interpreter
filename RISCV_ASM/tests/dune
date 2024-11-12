@@ -1,0 +1,3 @@
+(cram
+ (applies_to factorial_test)
+ (deps ../repl/REPL.exe ../examples/factorial/factorial.s))
