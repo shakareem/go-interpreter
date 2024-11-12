@@ -5,272 +5,318 @@
 open Ast
 open Format
 
-let print_bin_op fmt = function
-  | Bin_sum -> fprintf fmt " + "
-  | Bin_multiply -> fprintf fmt " * "
-  | Bin_subtract -> fprintf fmt " - "
-  | Bin_divide -> fprintf fmt " / "
-  | Bin_modulus -> fprintf fmt " %% "
-  | Bin_equal -> fprintf fmt " == "
-  | Bin_not_equal -> fprintf fmt " != "
-  | Bin_greater -> fprintf fmt " > "
-  | Bin_greater_equal -> fprintf fmt " >= "
-  | Bin_less -> fprintf fmt " < "
-  | Bin_less_equal -> fprintf fmt " <= "
-  | Bin_and -> fprintf fmt " && "
-  | Bin_or -> fprintf fmt " || "
+let sep_by sep list print =
+  let rec helper acc list =
+    match list with
+    | hd :: tl ->
+      let sep =
+        match tl with
+        | _ :: _ -> sep
+        | [] -> ""
+      in
+      let acc = acc ^ print hd ^ sep in
+      helper acc tl
+    | [] -> acc
+  in
+  helper "" list
 ;;
 
-let rec print_type fmt type' =
-  match type' with
-  | Type_int -> fprintf fmt " int "
-  | Type_string -> fprintf fmt " string "
-  | Type_bool -> fprintf fmt " bool "
-  | Type_array (int, type') ->
-    fprintf fmt "[%i]" int;
-    print_type fmt type'
-  | Type_func (lst1, lst2) ->
-    fprintf fmt "func(";
-    List.iter (print_type fmt) lst1;
-    fprintf fmt ") (";
-    List.iter (print_type fmt) lst2;
-    fprintf fmt ") "
+let sep_by_comma list print = sep_by ", " list print
+
+let rec print_type = function
+  | Type_int -> "int"
+  | Type_string -> "string"
+  | Type_bool -> "bool"
+  | Type_array (size, type') -> asprintf "[%i]%s" size (print_type type')
+  | Type_func (arg_types, return_types) ->
+    asprintf
+      "func(%s)(%s)"
+      (sep_by_comma arg_types print_type)
+      (sep_by_comma return_types print_type)
   | Type_chan chan_type ->
     (match chan_type with
-     | Chan_bidirectional t ->
-       fprintf fmt "chan ";
-       print_type fmt t
-     | Chan_receive t ->
-       fprintf fmt "<- chan ";
-       print_type fmt t
-     | Chan_send t ->
-       fprintf fmt "chan<- ";
-       print_type fmt t)
+     | Chan_bidirectional t -> asprintf "chan %s" (print_type t)
+     | Chan_receive t -> asprintf "<-chan %s" (print_type t)
+     | Chan_send t -> asprintf "chan<- %s" (print_type t))
 ;;
 
-let print_pair_type fmt t =
-  let t1, t2 = List.split t in
-  List.iter2
-    (fun a b ->
-      fprintf fmt "%s" a;
-      print_type fmt b)
-    t1
-    t2
+let print_idents_with_types list =
+  let rec helper acc list =
+    match list with
+    | (id, t) :: tl ->
+      let acc = acc ^ id ^ " " ^ print_type t ^ ", " in
+      helper acc tl
+    | [] -> acc
+  in
+  helper "" list
 ;;
 
-let print_un_op fmt = function
-  | Unary_not -> fprintf fmt " !"
-  | Unary_plus -> fprintf fmt " +"
-  | Unary_minus -> fprintf fmt " -"
-  | Unary_recieve -> fprintf fmt " <-"
+let print_func_args_returns_and_body pblock anon_func =
+  let { args; returns; body } = anon_func in
+  let print_returns =
+    match returns with
+    | Some (Only_types types) -> sep_by_comma types print_type
+    | Some (Ident_and_types pairs) -> print_idents_with_types pairs
+    | None -> ""
+  in
+  asprintf "(%s) (%s) %s" (print_idents_with_types args) print_returns (pblock body)
 ;;
 
-let print_return_values fmt = function
-  | Only_types t ->
-    fprintf fmt "( ";
-    List.iter (print_type fmt) t;
-    fprintf fmt " )"
-  | Ident_and_types t ->
-    fprintf fmt "( ";
-    print_pair_type fmt t;
-    fprintf fmt " )"
+let print_const pexpr pblock = function
+  | Const_int num -> asprintf "%i" num
+  | Const_string str -> "\"" ^ str ^ "\""
+  | Const_array (size, type', inits) ->
+    asprintf "[%i]%s{%s}" size (print_type type') (sep_by_comma inits pexpr)
+  | Const_func anon_func -> "func" ^ print_func_args_returns_and_body pblock anon_func
 ;;
 
-let print_func_call fmt t f =
-  let e1, el = t in
-  f e1;
-  fprintf fmt "( ";
-  List.iter f el;
-  fprintf fmt " )"
+let print_bin_op = function
+  | Bin_sum -> "+"
+  | Bin_multiply -> "*"
+  | Bin_subtract -> "-"
+  | Bin_divide -> "/"
+  | Bin_modulus -> "%"
+  | Bin_equal -> "=="
+  | Bin_not_equal -> "!="
+  | Bin_greater -> ">"
+  | Bin_greater_equal -> ">="
+  | Bin_less -> "<"
+  | Bin_less_equal -> "<="
+  | Bin_and -> "&&"
+  | Bin_or -> "||"
 ;;
 
-let rec print_expr fmt expr =
-  match expr with
-  | Expr_const (Const_int num) -> fprintf fmt "%i" num
-  | Expr_const (Const_string str) -> fprintf fmt "%s" str
-  | Expr_const (Const_array (intt, type', expr_lst)) ->
-    fprintf fmt "[%i]" intt;
-    print_type fmt type';
-    fprintf fmt "{";
-    List.iter (print_expr fmt) expr_lst;
-    fprintf fmt "}"
-  | Expr_const (Const_func afunc) ->
-    fprintf fmt "func";
-    print_pair_type fmt afunc.args;
-    (match afunc.returns with
-     | Some x ->
-       fprintf fmt "( ";
-       print_return_values fmt x;
-       fprintf fmt "( " (*print block*)
-     | None -> fprintf fmt " ")
-  | Expr_ident idnt -> fprintf fmt "%s" idnt
-  | Expr_index (exp1, exp2) ->
-    print_expr fmt exp1;
-    fprintf fmt "[ ";
-    print_expr fmt exp2;
-    fprintf fmt "[ "
-  | Expr_bin_oper (t, arg1, arg2) ->
-    print_expr fmt arg1;
-    print_bin_op fmt t;
-    print_expr fmt arg2
-  | Expr_un_oper (t, arg1) ->
-    print_un_op fmt t;
-    print_expr fmt arg1
-  | Expr_call fc -> print_func_call fmt fc (print_expr fmt)
+let print_un_op = function
+  | Unary_not -> "!"
+  | Unary_plus -> "+"
+  | Unary_minus -> "-"
+  | Unary_recieve -> "<-"
 ;;
 
-let print_pair_expr fmt t f1 div =
-  let t1, t2 = List.split t in
-  List.iter (fun a -> f1 a) t1;
-  fprintf fmt " %s " div;
-  List.iter (fun b -> print_expr fmt b) t2
+let print_func_call pexpr call =
+  let func, args = call in
+  asprintf "%s(%s)" (pexpr func) (sep_by_comma args pexpr)
 ;;
 
-let rec print_lvalue fmt lv =
-  match lv with
-  | Lvalue_ident s -> fprintf fmt "%s" s
-  | Lvalue_array_index (lv, ex) ->
-    print_expr fmt ex;
-    print_lvalue fmt lv
+let print_expr pblock expr =
+  let rec pexpr = function
+    | Expr_const const -> print_const pexpr pblock const
+    | Expr_ident id -> id
+    | Expr_index (array, index) -> asprintf "%s[%s]" (pexpr array) (pexpr index)
+    | Expr_bin_oper (operator, left_operand, right_operand) ->
+      asprintf
+        "%s %s %s"
+        (pexpr left_operand)
+        (print_bin_op operator)
+        (pexpr right_operand)
+    | Expr_un_oper (operator, operand) -> print_un_op operator ^ pexpr operand
+    | Expr_call call -> print_func_call pexpr call
+  in
+  pexpr expr
 ;;
 
-let print_block a f = List.iter f a
+let print_long_decl pblock = function
+  | Long_decl_no_init (type', idents) ->
+    asprintf "var %s %s" (print_type type') (sep_by_comma idents Fun.id)
+  | Long_decl_mult_init (type', assigns) ->
+    let print_type =
+      match type' with
+      | Some t -> print_type t
+      | None -> ""
+    in
+    let idents, inits = List.split assigns in
+    asprintf
+      "var %s %s = %s"
+      print_type
+      (sep_by_comma idents Fun.id)
+      (sep_by_comma inits (print_expr pblock))
+  | Long_decl_one_init (type', idents, init) ->
+    let print_type =
+      match type' with
+      | Some t -> print_type t
+      | None -> ""
+    in
+    asprintf
+      "var %s %s = %s"
+      print_type
+      (sep_by_comma idents Fun.id)
+      (print_expr pblock init)
+;;
 
-let rec print_stmt fmt stmt =
-  match stmt with
-  | Stmt_long_var_decl lvd ->
-    (match lvd with
-     | Long_decl_mult_init (t, li) ->
-       fprintf fmt "var ";
-       print_pair_expr fmt li (fprintf fmt "%s") "=";
-       (match t with
-        | Some x -> print_type fmt x
-        | None -> fprintf fmt " ")
-     | Long_decl_no_init (t, il) ->
-       fprintf fmt "var ";
-       List.iter (fprintf fmt "%s") il;
-       print_type fmt t
-     | Long_decl_one_init (t, il, ex) ->
-       fprintf fmt "var ";
-       List.iter (fprintf fmt "%s") il;
-       (match t with
-        | Some x -> print_type fmt x
-        | None -> fprintf fmt " ");
-       fprintf fmt " = ";
-       print_expr fmt ex)
-  | Stmt_short_var_decl vd ->
-    (match vd with
-     | Short_decl_mult_init ls -> print_pair_expr fmt ls (fprintf fmt "%s") " := "
-     | Short_decl_one_init (il, ex) ->
-       List.iter (fprintf fmt "%s") il;
-       fprintf fmt " = ";
-       print_expr fmt ex)
-  | Stmt_assign ad ->
-    (match ad with
-     | Assign_mult_expr ls -> print_pair_expr fmt ls (print_lvalue fmt) " = "
-     | Assign_one_expr (ls, ex) ->
-       List.iter (print_lvalue fmt) ls;
-       fprintf fmt " = ";
-       print_expr fmt ex)
-  | Stmt_incr id -> fprintf fmt "%s++" id
-  | Stmt_decr id -> fprintf fmt "%s--" id
-  | Stmt_if usl ->
-    fprintf fmt "if ";
+let print_short_decl pblock = function
+  | Short_decl_mult_init assigns ->
+    let idents, inits = List.split assigns in
+    asprintf
+      "%s := %s"
+      (sep_by_comma idents Fun.id)
+      (sep_by_comma inits (print_expr pblock))
+  | Short_decl_one_init (idents, init) ->
+    asprintf "%s := %s" (sep_by_comma idents Fun.id) (print_expr pblock init)
+;;
+
+let rec print_lvalue pblock = function
+  | Lvalue_ident id -> id
+  | Lvalue_array_index (lvalue, index) ->
+    asprintf "%s[%s]" (print_lvalue pblock lvalue) (print_expr pblock index)
+;;
+
+let print_assign pblock = function
+  | Assign_mult_expr assigns ->
+    let lvalues, inits = List.split assigns in
+    asprintf
+      "%s = %s"
+      (sep_by_comma lvalues (print_lvalue pblock))
+      (sep_by_comma inits (print_expr pblock))
+  | Assign_one_expr (lvalues, init) ->
+    asprintf
+      "%s = %s"
+      (sep_by_comma lvalues (print_lvalue pblock))
+      (print_expr pblock init)
+;;
+
+let rec print_stmt pblock = function
+  | Stmt_long_var_decl decl -> print_long_decl pblock decl
+  | Stmt_short_var_decl decl -> print_short_decl pblock decl
+  | Stmt_assign assign -> print_assign pblock assign
+  | Stmt_incr id -> asprintf "%s++" id
+  | Stmt_decr id -> asprintf "%s--" id
+  | Stmt_break -> "break"
+  | Stmt_continue -> "continue"
+  | Stmt_return exprs -> "return " ^ sep_by_comma exprs (print_expr pblock)
+  | Stmt_block block -> pblock block
+  | Stmt_call call -> print_func_call (print_expr pblock) call
+  | Stmt_defer call -> "defer " ^ print_func_call (print_expr pblock) call
+  | Stmt_go call -> "go " ^ print_func_call (print_expr pblock) call
+  | Stmt_chan_send (chan, expr) -> asprintf "%s <- %s" chan (print_expr pblock expr)
+  | Stmt_if _ -> ""
+  | Stmt_for _ -> ""
+  | Stmt_range _ -> ""
+;;
+
+(* | Stmt_if usl ->
+    "if ";
     (match usl.init with
      | Some x ->
-       print_stmt fmt x;
-       fprintf fmt "; "
-     | None -> fprintf fmt " ");
-    print_expr fmt usl.cond;
-    fprintf fmt "{ ";
-    print_block usl.if_body (print_stmt fmt);
-    fprintf fmt " }";
+       print_stmt x;
+       "; "
+     | None -> " ");
+    print_expr usl.cond;
+    "{ ";
+    print_block usl.if_body print_stmt;
+    " }";
     (match usl.else_body with
      | Some x ->
-       fprintf fmt "else { ";
-       print_stmt fmt x;
-       fprintf fmt " }"
-     | None -> fprintf fmt " ")
+       "else { ";
+       print_stmt x;
+       " }"
+     | None -> " ")
   | Stmt_for usl ->
-    fprintf fmt "for ";
+    "for ";
     (match usl.init with
      | Some x ->
-       print_stmt fmt x;
-       fprintf fmt "; "
-     | None -> fprintf fmt " ");
+       print_stmt x;
+       "; "
+     | None -> " ");
     (match usl.cond with
      | Some x ->
-       print_expr fmt x;
-       fprintf fmt "; "
-     | None -> fprintf fmt " ");
+       print_expr x;
+       "; "
+     | None -> " ");
     (match usl.post with
      | Some x ->
-       print_stmt fmt x;
-       fprintf fmt "; "
-     | None -> fprintf fmt " ");
-    fprintf fmt "{ ";
-    print_block usl.body (print_stmt fmt);
-    fprintf fmt " }"
+       print_stmt x;
+       "; "
+     | None -> " ");
+    "{ ";
+    print_block usl.body print_stmt;
+    " }"
   | Stmt_chan_send (idnt, ex) ->
-    fprintf fmt "%s " idnt;
-    fprintf fmt " <- ";
-    print_expr fmt ex
-  | Stmt_range _ -> fprintf fmt " "
-  | Stmt_break -> fprintf fmt " break "
-  | Stmt_continue -> fprintf fmt " continue "
+    "%s " idnt;
+    " <- ";
+    print_expr ex
+  | Stmt_range _ -> " "
+  | Stmt_break -> " break "
+  | Stmt_continue -> " continue "
   | Stmt_return exl ->
-    fprintf fmt " return ";
-    List.iter (print_expr fmt) exl
-  | Stmt_block bl -> print_block bl (print_stmt fmt)
-  | Stmt_call cl -> print_func_call fmt cl (print_expr fmt)
+    " return ";
+    List.iter print_expr exl
+  | Stmt_block bl -> print_block bl print_stmt
+  | Stmt_call cl -> print_func_call cl print_expr
   | Stmt_defer cl ->
-    fprintf fmt "defer ";
-    print_func_call fmt cl (print_expr fmt)
+    "defer ";
+    print_func_call cl print_expr
   | Stmt_go cl ->
-    fprintf fmt "go ";
-    print_func_call fmt cl (print_expr fmt)
+    "go ";
+    print_func_call cl print_expr *)
+
+let rec print_block block =
+  asprintf "{\n%s\n}" (sep_by "\n" block (print_stmt print_block))
 ;;
 
-let print_func_decl fmt dlc =
-  let idnt, ls = dlc in
-  fprintf fmt "func %s" idnt;
-  print_expr fmt (Expr_const (Const_func ls))
+let print_top_decl = function
+  | Decl_var decl -> print_long_decl print_block decl
+  | Decl_func decl ->
+    let ident, args_returns_and_body = decl in
+    asprintf
+      "func %s%s"
+      ident
+      (print_func_args_returns_and_body print_block args_returns_and_body)
 ;;
 
-let print_top_decl fmt dcl =
-  match dcl with
-  | Decl_var lvd -> print_stmt fmt (Stmt_long_var_decl lvd)
-  | Decl_func fdl -> print_func_decl fmt fdl
+let print_file file = sep_by "\n\n" file print_top_decl
+let pp fmt file = fprintf fmt "%s" (print_file file)
+
+(********** type tests **********)
+
+let%expect_test "type int" =
+  print_endline (print_type Type_int);
+  [%expect {| int |}]
 ;;
 
-let print_file fmt dcl = List.iter (print_top_decl fmt) dcl
+let%expect_test "type string" =
+  print_endline (print_type Type_string);
+  [%expect {| string |}]
+;;
 
-(*
-   let%expect_test "arithmetic" =
-   print_expr
-   (Expr_bin_oper
-   ( Bin_sum
-   , Expr_bin_oper
-   ( Bin_multiply
-   , Expr_un_oper (Unary_minus, Expr_const (Const_int 5))
-   , Expr_ident "_r" )
-   , Expr_const (Const_int 8) ));
-   [%expect {| -5 * _r + 8 |}]
-   ;;
+let%expect_test "type bool" =
+  print_endline (print_type Type_bool);
+  [%expect {| bool |}]
+;;
 
-   let%expect_test "simple_call" =
-   print_expr
-   (Expr_call
-   ( Expr_ident "fac"
-   , [ Expr_bin_oper
-             ( Bin_sum
-             , Expr_const (Const_int 4)
-             , Expr_call
-                 ( Expr_ident "fac"
-                 , [ Expr_bin_oper
-                       (Bin_sum, Expr_const (Const_int 4), Expr_const (Const_int 4))
-                   ] ) )
-         ] ));
-   [%expect {| fac( 4 + fac( 4 + 4 ) ) |}]
-   ;;
-*)
+let%expect_test "type simple array" =
+  print_endline (print_type (Type_array (5, Type_int)));
+  [%expect {| [5]int |}]
+;;
+
+let%expect_test "type array of arrays" =
+  print_endline (print_type (Type_array (5, Type_array (5, Type_int))));
+  [%expect {|[5][5]int|}]
+;;
+
+let%expect_test "type simple func" =
+  print_endline (print_type (Type_func ([], [])));
+  [%expect {| func()() |}]
+;;
+
+let%expect_test "type complex func" =
+  print_endline
+    (print_type
+       (Type_func
+          ([ Type_bool; Type_func ([], []) ], [ Type_array (0, Type_string); Type_int ])));
+  [%expect {| func(bool, func()())([0]string, int) |}]
+;;
+
+let%expect_test "type bidirectional channel" =
+  print_endline (print_type (Type_chan (Chan_bidirectional Type_int)));
+  [%expect {| chan int |}]
+;;
+
+let%expect_test "type receive-only channel" =
+  print_endline (print_type (Type_chan (Chan_receive Type_string)));
+  [%expect {| <-chan string |}]
+;;
+
+let%expect_test "type send-only channel" =
+  print_endline (print_type (Type_chan (Chan_send Type_string)));
+  [%expect {| chan<- string |}]
+;;
