@@ -159,17 +159,17 @@ let rec print_expr pblock = function
 
 let print_long_decl pblock = function
   | Long_decl_no_init (type', idents) ->
-    asprintf "var %s %s" (print_type type') (sep_by_comma idents Fun.id)
+    asprintf "var %s %s" (sep_by_comma idents print_ident) (print_type type')
   | Long_decl_mult_init (type', assigns) ->
     let print_type =
       match type' with
-      | Some t -> print_type t
+      | Some t -> " " ^ print_type t
       | None -> ""
     in
     let idents, inits = List.split assigns in
     asprintf
-      "var %s %s = %s"
-      (sep_by_comma idents Fun.id)
+      "var %s%s = %s"
+      (sep_by_comma idents print_ident)
       print_type
       (sep_by_comma inits (print_expr pblock))
   | Long_decl_one_init (type', idents, init) ->
@@ -180,7 +180,7 @@ let print_long_decl pblock = function
     in
     asprintf
       "var %s %s = %s"
-      (sep_by_comma idents Fun.id)
+      (sep_by_comma idents print_ident)
       print_type
       (print_expr pblock init)
 ;;
@@ -190,10 +190,10 @@ let print_short_decl pblock = function
     let idents, inits = List.split assigns in
     asprintf
       "%s := %s"
-      (sep_by_comma idents Fun.id)
+      (sep_by_comma idents print_ident)
       (sep_by_comma inits (print_expr pblock))
   | Short_decl_one_init (idents, init) ->
-    asprintf "%s := %s" (sep_by_comma idents Fun.id) (print_expr pblock init)
+    asprintf "%s := %s" (sep_by_comma idents print_ident) (print_expr pblock init)
 ;;
 
 let rec print_lvalue pblock = function
@@ -324,4 +324,4 @@ let print_top_decl = function
 
 let print_expr = print_expr print_block
 let print_stmt = print_stmt print_block
-let print_file file = sep_by "\n\n" file print_top_decl
+let print_file file = sep_by "\n\n" file print_top_decl ^ "\n"

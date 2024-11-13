@@ -1,3 +1,3 @@
 (executable
  (name qCheckRun)
- (libraries parser pp qcheck))
+ (libraries parse pprinter qcheck))

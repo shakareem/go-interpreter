@@ -496,20 +496,20 @@ let%expect_test "stmt long decl single var no init" =
        (Stmt_long_var_decl
           (Long_decl_no_init
              (Type_array (2, Type_array (3, Type_array (1, Type_bool))), [ "a" ]))));
-  [%expect {| var [2][3][1]bool a |}]
+  [%expect {| var a [2][3][1]bool |}]
 ;;
 
 let%expect_test "stmt long decl mult var no init" =
   print_endline
     (print_stmt (Stmt_long_var_decl (Long_decl_no_init (Type_string, [ "a"; "b"; "c" ]))));
-  [%expect {| var string a, b, c |}]
+  [%expect {| var a, b, c string |}]
 ;;
 
 let%expect_test "stmt long decl single var no type with init" =
   print_endline
     (print_stmt
        (Stmt_long_var_decl (Long_decl_mult_init (None, [ "a", Expr_const (Const_int 5) ]))));
-  [%expect {| var a  = 5 |}]
+  [%expect {| var a = 5 |}]
 ;;
 
 let%expect_test "stmt long decl multiple var no type with init" =
@@ -522,7 +522,7 @@ let%expect_test "stmt long decl multiple var no type with init" =
                ; "b", Expr_ident "nil"
                ; "c", Expr_const (Const_string "hi")
                ] ))));
-  [%expect {| var a, b, c  = 5, nil, "hi" |}]
+  [%expect {| var a, b, c = 5, nil, "hi" |}]
 ;;
 
 let%expect_test "stmt long decl one var with type with init" =
@@ -846,7 +846,7 @@ let%expect_test "file with multiple declarations" =
        ; Decl_func ("main", { args = []; returns = None; body = [] })
        ]);
   [%expect {|
-    var int x
+    var x int
 
     func main() {} |}]
 ;;
