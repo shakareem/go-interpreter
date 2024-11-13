@@ -1,14 +1,3 @@
-(library
- (name qCheckTest)
- (libraries ast qcheck)
- (modules AstGenerator Pp)
- (inline_tests)
- (instrumentation
-  (backend bisect_ppx))
- (preprocess
-  (pps ppx_expect)))
-
 (executable
  (name qCheckRun)
- (libraries parser qCheckTest)
- (modules QCheckRun))
+ (libraries parser pp qcheck))

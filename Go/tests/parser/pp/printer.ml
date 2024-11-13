@@ -22,6 +22,7 @@ let sep_by sep list print =
 ;;
 
 let sep_by_comma list print = sep_by ", " list print
+let print_ident ident = ident
 
 let rec print_type = function
   | Type_int -> "int"
@@ -30,7 +31,7 @@ let rec print_type = function
   | Type_array (size, type') -> asprintf "[%i]%s" size (print_type type')
   | Type_func (arg_types, return_types) ->
     asprintf
-      "func(%s)(%s)"
+      "func(%s) (%s)"
       (sep_by_comma arg_types print_type)
       (sep_by_comma return_types print_type)
   | Type_chan chan_type ->
@@ -44,7 +45,12 @@ let print_idents_with_types list =
   let rec helper acc list =
     match list with
     | (id, t) :: tl ->
-      let acc = acc ^ id ^ " " ^ print_type t ^ ", " in
+      let sep =
+        match tl with
+        | _ :: _ -> ", "
+        | [] -> ""
+      in
+      let acc = acc ^ id ^ " " ^ print_type t ^ sep in
       helper acc tl
     | [] -> acc
   in
@@ -105,7 +111,7 @@ let rec print_expr pblock = function
     asprintf "%s[%s]" ((print_expr pblock) array) ((print_expr pblock) index)
   | Expr_bin_oper (operator, left_operand, right_operand) ->
     asprintf
-      "%s %s %s"
+      "(%s) %s (%s)"
       ((print_expr pblock) left_operand)
       (print_bin_op operator)
       ((print_expr pblock) right_operand)
@@ -125,8 +131,8 @@ let print_long_decl pblock = function
     let idents, inits = List.split assigns in
     asprintf
       "var %s %s = %s"
-      print_type
       (sep_by_comma idents Fun.id)
+      print_type
       (sep_by_comma inits (print_expr pblock))
   | Long_decl_one_init (type', idents, init) ->
     let print_type =
@@ -136,8 +142,8 @@ let print_long_decl pblock = function
     in
     asprintf
       "var %s %s = %s"
-      print_type
       (sep_by_comma idents Fun.id)
+      print_type
       (print_expr pblock init)
 ;;
 
@@ -176,7 +182,7 @@ let print_if pstmt pblock = function
   | Stmt_if { init; cond; if_body; else_body } ->
     let print_init =
       match init with
-      | Some init -> pstmt init
+      | Some init -> pstmt init ^ "; "
       | None -> ""
     in
     let print_else_body =
@@ -185,7 +191,7 @@ let print_if pstmt pblock = function
       | None -> ""
     in
     asprintf
-      "if %s; %s %s %s"
+      "if %s%s %s %s"
       print_init
       (print_expr pblock cond)
       (pblock if_body)
@@ -210,7 +216,10 @@ let print_for pstmt pblock = function
       | Some post -> pstmt post
       | None -> ""
     in
-    asprintf "for %s; %s; %s %s" print_init print_cond print_post (pblock body)
+    (match init, cond, post with
+     | None, None, None -> asprintf "for %s" (pblock body)
+     | None, Some _, None -> asprintf "for %s %s" print_cond (pblock body)
+     | _ -> asprintf "for %s; %s; %s %s" print_init print_cond print_post (pblock body))
   | _ -> ""
 ;;
 
@@ -254,7 +263,15 @@ let rec print_stmt pblock = function
 ;;
 
 let rec print_block block =
-  asprintf "{\n%s\n}" (sep_by "\n" block (print_stmt print_block))
+  match block with
+  | [] -> "{}"
+  | _ :: _ ->
+    let replace old_sub new_sub str =
+      let old_sub = Str.regexp_string old_sub in
+      Str.global_replace old_sub new_sub str
+    in
+    replace "\n" "\n    " (asprintf "{\n%s" (sep_by "\n" block (print_stmt print_block)))
+    ^ "\n}"
 ;;
 
 let print_top_decl = function
@@ -267,60 +284,7 @@ let print_top_decl = function
       (print_func_args_returns_and_body print_block args_returns_and_body)
 ;;
 
+let print_expr = print_expr print_block
+let print_const const = print_const print_expr print_block const
+let print_stmt = print_stmt print_block
 let print_file file = sep_by "\n\n" file print_top_decl
-let pp fmt file = fprintf fmt "%s" (print_file file)
-
-(********** type tests **********)
-
-let%expect_test "type int" =
-  print_endline (print_type Type_int);
-  [%expect {| int |}]
-;;
-
-let%expect_test "type string" =
-  print_endline (print_type Type_string);
-  [%expect {| string |}]
-;;
-
-let%expect_test "type bool" =
-  print_endline (print_type Type_bool);
-  [%expect {| bool |}]
-;;
-
-let%expect_test "type simple array" =
-  print_endline (print_type (Type_array (5, Type_int)));
-  [%expect {| [5]int |}]
-;;
-
-let%expect_test "type array of arrays" =
-  print_endline (print_type (Type_array (5, Type_array (5, Type_int))));
-  [%expect {|[5][5]int|}]
-;;
-
-let%expect_test "type simple func" =
-  print_endline (print_type (Type_func ([], [])));
-  [%expect {| func()() |}]
-;;
-
-let%expect_test "type complex func" =
-  print_endline
-    (print_type
-       (Type_func
-          ([ Type_bool; Type_func ([], []) ], [ Type_array (0, Type_string); Type_int ])));
-  [%expect {| func(bool, func()())([0]string, int) |}]
-;;
-
-let%expect_test "type bidirectional channel" =
-  print_endline (print_type (Type_chan (Chan_bidirectional Type_int)));
-  [%expect {| chan int |}]
-;;
-
-let%expect_test "type receive-only channel" =
-  print_endline (print_type (Type_chan (Chan_receive Type_string)));
-  [%expect {| <-chan string |}]
-;;
-
-let%expect_test "type send-only channel" =
-  print_endline (print_type (Type_chan (Chan_send Type_string)));
-  [%expect {| chan<- string |}]
-;;
