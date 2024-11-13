@@ -28,7 +28,7 @@ let%expect_test "stmt defer with func" =
 let%expect_test "stmt defer with expr that is not a func" =
   pp print_stmt parse_stmt {|defer 2 + 2 * 5|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt go with func" =
@@ -41,7 +41,7 @@ let%expect_test "stmt go with func" =
 let%expect_test "stmt go with expr that is not a func" =
   pp print_stmt parse_stmt {|go 2 + 2 * 5|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt chan send" =
@@ -169,12 +169,12 @@ let%expect_test "stmt assign mult lvalues and one rvalue that is a func call" =
 
 let%expect_test "stmt assign mult lvalues and one rvalue that is not a func call" =
   pp print_stmt parse_stmt {|a, b ,c = abc|};
-  [%expect {| : Incorrect statement |}]
+  [%expect {| : syntax error |}]
 ;;
 
 let%expect_test "stmt assign mult unequal lvalues and rvalues" =
   pp print_stmt parse_stmt {|a, b ,c = 2, 3, 4, 5 , 6|};
-  [%expect {| : Incorrect statement |}]
+  [%expect {| : syntax error |}]
 ;;
 
 (********** long var decl **********)
@@ -236,13 +236,13 @@ let%expect_test "stmt long var decl mult lvalues and one rvalue that is a func c
 let%expect_test "stmt long var decl mult lvalues and one rvalue that is not a func call" =
   pp print_stmt parse_stmt {|var a, b, c = true|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt long var decl unequal lvalues and rvalues" =
   pp print_stmt parse_stmt {|var a, b, c = 1, 2, 3, 4|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 (********** short var decl **********)
@@ -268,13 +268,13 @@ let%expect_test "stmt short var decl mult lvalues and one rvalue that is a func 
 let%expect_test "stmt short var decl mult lvalues and one rvalue that is not a func call" =
   pp print_stmt parse_stmt {|a, b, c := abcdefg"|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt short var decl unequal lvalues and rvalues" =
   pp print_stmt parse_stmt {|a, b, c := 1, 2, 3, 4|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 (********** block **********)
@@ -340,7 +340,7 @@ let%expect_test "stmt if with empty init" =
 let%expect_test "stmt if with wrong init" =
   pp print_stmt parse_stmt {|if var a = 5; cond {}|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt if with else that is a block" =
@@ -358,7 +358,7 @@ let%expect_test "stmt if with else that is another if" =
 let%expect_test "stmt if with wrong else" =
   pp print_stmt parse_stmt {|if cond {} else do_smth()|};
   [%expect {|
-    : Incorrect statement |}]
+    : syntax error |}]
 ;;
 
 (********** for **********)
@@ -433,12 +433,12 @@ let%expect_test "stmt range with assign blank index and elem" =
 
 let%expect_test "stmt range with more than two idents" =
   pp print_stmt parse_stmt {|for a, b, c, d = range array {}|};
-  [%expect {| : Incorrect statement |}]
+  [%expect {| : syntax error |}]
 ;;
 
 let%expect_test "stmt range without idents" =
   pp print_stmt parse_stmt {|for := range array {}|};
-  [%expect {| : Incorrect statement |}]
+  [%expect {| : syntax error |}]
 ;;
 
 let%expect_test "stmt range with const array" =

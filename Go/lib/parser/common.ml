@@ -6,6 +6,8 @@ open Base
 open Ast
 open Angstrom
 
+let fail = fail ""
+let fail_if cond = if cond then fail else return ()
 let skip_whitespace = skip_many1 (satisfy Char.is_whitespace)
 let skip_line_whitespace = skip_many1 (char ' ' <|> char '\t')
 let parse_line_comment = string "//" *> many_till any_char (char '\n') *> return ()
@@ -39,7 +41,7 @@ let is_keyword = function
 ;;
 
 let parse_ident =
-  let is_first_char_valid = function
+  let is_first_char = function
     | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
     | _ -> false
   in
@@ -47,12 +49,10 @@ let parse_ident =
     | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
     | _ -> false
   in
-  let* first_char = peek_char in
-  match first_char with
-  | Some chr when is_first_char_valid chr ->
-    let* ident = take_while is_valid_char in
-    if is_keyword ident then fail "Ident cannot be a keyword" else return ident
-  | _ -> fail "Invalid ident"
+  let* first_char = satisfy is_first_char >>| Char.to_string in
+  let* rest = take_while is_valid_char in
+  let ident = first_char ^ rest in
+  if is_keyword ident then fail else return ident
 ;;
 
 let parse_simple_type =

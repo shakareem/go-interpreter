@@ -30,14 +30,14 @@ let%expect_test "ident with numbers" =
 
 let%expect_test "ident with first char that is digit" =
   pp print_ident parse_ident {|1abc|};
-  [%expect {| : Invalid ident |}]
+  [%expect {| : syntax error |}]
 ;;
 
 (********** type **********)
 
 let%expect_test "incorrect type" =
   pp print_type parse_type {|blablablablabla|};
-  [%expect {| : no more choices |}]
+  [%expect {| : syntax error |}]
 ;;
 
 let%expect_test "type int" =

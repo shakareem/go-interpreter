@@ -20,7 +20,7 @@ let%expect_test "zero" =
 
 let%expect_test "not digit in int" =
   pp print_expr parse_expr {|123,321|};
-  [%expect {| : end_of_input |}]
+  [%expect {| : syntax error |}]
 ;;
 
 (* bug

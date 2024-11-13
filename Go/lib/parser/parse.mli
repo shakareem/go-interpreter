@@ -10,4 +10,4 @@ val parse_type : type' t
 val parse_expr : expr t
 val parse_stmt : stmt t
 val parse_file : file t
-val parse : 'a Angstrom.t -> string -> ('a, string) result
+val parse : 'a t -> string -> ('a, string) result

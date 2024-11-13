@@ -76,9 +76,8 @@ and const =
   | Const_int of int (** Integer constants such as [0], [123] *)
   | Const_string of string (** Constant strings such as ["my_string"] *)
   | Const_array of int * type' * expr list
-  (** Arrays such as [[3]int{3, get_four()}]. Empty list means that there is
-      no initializers, array will be filled with default values
-      ([0] for int, [""] for string and [false] for bool arrays) *)
+  (** Const arrays such as [[3]int{3, get()}].
+      Empty list means that there is no initializers. *)
   | Const_func of anon_func (** See anon_func type *)
 [@@deriving show { with_path = false }]
 

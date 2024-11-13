@@ -110,11 +110,7 @@ let parse_func_return_values =
     [ (parens parse_idents_with_types >>| fun returns -> Some (Ident_and_types returns))
     ; (parens (sep_by_comma1 parse_type) >>| fun types -> Some (Only_types types))
     ; (parse_type >>| fun t -> Some (Only_types [ t ]))
-    ; (let* _ = parens ws <|> return () in
-       let* char = ws_line *> peek_char_fail in
-       match char with
-       | '{' -> return None
-       | _ -> fail "Incorrect func return values")
+    ; (parens ws <|> return ()) *> return None
     ]
 ;;
 
@@ -201,6 +197,5 @@ let parse_expr pblock =
            ])
     in
     let arg = chainr1 arg parse_and in
-    let arg = chainr1 arg parse_or in
-    arg)
+    chainr1 arg parse_or)
 ;;

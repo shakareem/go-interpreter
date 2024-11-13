@@ -6,6 +6,8 @@ open! Base
 open Ast
 open Angstrom
 
+val fail : 'a t
+val fail_if : bool -> unit t
 val ws : unit t
 val ws_line : unit t
 val token : string -> string t
