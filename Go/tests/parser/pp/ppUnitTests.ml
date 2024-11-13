@@ -39,7 +39,7 @@ let%expect_test "type array of arrays" =
 
 let%expect_test "type simple func" =
   print_endline (print_type (Type_func ([], [])));
-  [%expect {| func() () |}]
+  [%expect {| func() |}]
 ;;
 
 let%expect_test "type complex func" =
@@ -47,7 +47,7 @@ let%expect_test "type complex func" =
     (print_type
        (Type_func
           ([ Type_bool; Type_func ([], []) ], [ Type_array (0, Type_string); Type_int ])));
-  [%expect {| func(bool, func() ()) ([0]string, int) |}]
+  [%expect {| func(bool, func()) ([0]string, int) |}]
 ;;
 
 let%expect_test "type bidirectional channel" =
@@ -96,7 +96,7 @@ let%expect_test "expr const array with init" =
 let%expect_test "expr empty anon func" =
   print_endline
     (print_expr (Expr_const (Const_func { args = []; returns = None; body = [] })));
-  [%expect {| func() () {} |}]
+  [%expect {| func() {} |}]
 ;;
 
 let%expect_test "expr anon func with one arg and one return value" =
@@ -109,7 +109,7 @@ let%expect_test "expr anon func with one arg and one return value" =
              ; body = [ Stmt_return [ Expr_ident "a" ] ]
              })));
   [%expect {|
-    func(a int) (int) {
+    func(a int) int {
         return a
     } |}]
 ;;
@@ -533,7 +533,7 @@ let%expect_test "stmt long decl one var with type with init" =
              ( Some (Type_func ([], []))
              , [ "a", Expr_const (Const_func { args = []; returns = None; body = [] }) ]
              ))));
-  [%expect {| var a func() () = func() () {} |}]
+  [%expect {| var a func() = func() {} |}]
 ;;
 
 let%expect_test "stmt long decl mult var with type with init" =
@@ -836,7 +836,7 @@ let%expect_test "file with simple func decl" =
              ; body = []
              } )
        ]);
-  [%expect {| func main(a int) (bool) {} |}]
+  [%expect {| func main(a int) bool {} |}]
 ;;
 
 let%expect_test "file with multiple declarations" =
@@ -848,7 +848,7 @@ let%expect_test "file with multiple declarations" =
   [%expect {|
     var int x
 
-    func main() () {} |}]
+    func main() {} |}]
 ;;
 
 let%expect_test "file with factorial func" =
@@ -887,7 +887,7 @@ let%expect_test "file with factorial func" =
        ]);
   [%expect
     {|
-    func fac(n int) (int) {
+    func fac(n int) int {
         if n == 1 {
             return 1
         } else {

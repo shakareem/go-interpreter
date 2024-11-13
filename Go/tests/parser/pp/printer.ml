@@ -8,14 +8,10 @@ open Format
 let sep_by sep list print =
   let rec helper acc list =
     match list with
-    | hd :: tl ->
-      let sep =
-        match tl with
-        | _ :: _ -> sep
-        | [] -> ""
-      in
-      let acc = acc ^ print hd ^ sep in
-      helper acc tl
+    | fst :: snd :: tl ->
+      let acc = acc ^ print fst ^ sep in
+      helper acc (snd :: tl)
+    | fst :: _ -> acc ^ print fst
     | [] -> acc
   in
   helper "" list
@@ -30,10 +26,13 @@ let rec print_type = function
   | Type_bool -> "bool"
   | Type_array (size, type') -> asprintf "[%i]%s" size (print_type type')
   | Type_func (arg_types, return_types) ->
-    asprintf
-      "func(%s) (%s)"
-      (sep_by_comma arg_types print_type)
-      (sep_by_comma return_types print_type)
+    let print_returns =
+      match return_types with
+      | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma return_types print_type)
+      | type' :: _ -> " " ^ print_type type'
+      | [] -> ""
+    in
+    asprintf "func(%s)%s" (sep_by_comma arg_types print_type) print_returns
   | Type_chan chan_type ->
     (match chan_type with
      | Chan_bidirectional t -> asprintf "chan %s" (print_type t)
@@ -44,14 +43,10 @@ let rec print_type = function
 let print_idents_with_types list =
   let rec helper acc list =
     match list with
-    | (id, t) :: tl ->
-      let sep =
-        match tl with
-        | _ :: _ -> ", "
-        | [] -> ""
-      in
-      let acc = acc ^ id ^ " " ^ print_type t ^ sep in
-      helper acc tl
+    | (id, t) :: snd :: tl ->
+      let acc = acc ^ id ^ " " ^ print_type t ^ ", " in
+      helper acc (snd :: tl)
+    | (id, t) :: _ -> acc ^ id ^ " " ^ print_type t
     | [] -> acc
   in
   helper "" list
@@ -61,11 +56,15 @@ let print_func_args_returns_and_body pblock anon_func =
   let { args; returns; body } = anon_func in
   let print_returns =
     match returns with
-    | Some (Only_types types) -> sep_by_comma types print_type
-    | Some (Ident_and_types pairs) -> print_idents_with_types pairs
+    | Some (Only_types types) ->
+      (match types with
+       | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma types print_type)
+       | type' :: _ -> " " ^ print_type type'
+       | [] -> "")
+    | Some (Ident_and_types pairs) -> asprintf " (%s)" (print_idents_with_types pairs)
     | None -> ""
   in
-  asprintf "(%s) (%s) %s" (print_idents_with_types args) print_returns (pblock body)
+  asprintf "(%s)%s %s" (print_idents_with_types args) print_returns (pblock body)
 ;;
 
 let print_const pexpr pblock = function
