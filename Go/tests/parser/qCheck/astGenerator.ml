@@ -191,7 +191,7 @@ let gen_long_decl gblock =
     [ return (Long_decl_no_init (type', idents))
     ; (let* assigns = list_size int1_5 (pair gen_ident (gen_expr gblock)) in
        return (Long_decl_mult_init (Option.some type', assigns)))
-    ; (let* call = gen_expr_func_call (gen_expr gblock) in
+    ; (let* call = gen_func_call (gen_expr gblock) in
        return (Long_decl_one_init (Option.some type', idents, call)))
     ]
 ;;
@@ -207,7 +207,7 @@ let gen_stmt_short_decl gblock =
       [ (let* assigns = list_size int1_5 (pair gen_ident (gen_expr gblock)) in
          return (Short_decl_mult_init assigns))
       ; (let* idents = list_size int1_5 gen_ident in
-         let* call = gen_expr_func_call (gen_expr gblock) in
+         let* call = gen_func_call (gen_expr gblock) in
          return (Short_decl_one_init (idents, call)))
       ]
   in
@@ -247,7 +247,7 @@ let gen_stmt_assign gblock =
          in
          return (Assign_mult_expr assigns))
       ; (let* lvalues = list_size int1_5 (gen_assign_lvalue gblock) in
-         let* call = gen_expr_func_call (gen_expr gblock) in
+         let* call = gen_func_call (gen_expr gblock) in
          return (Assign_one_expr (lvalues, call)))
       ]
   in
@@ -317,12 +317,10 @@ let gen_stmt_for gstmt =
 let gen_stmt_range gstmt =
   let* index = gen_ident in
   let* element = option gen_ident in
+  let* variant = oneofl [ Decl; Assign ] in
   let* array = gen_expr (gen_block gstmt) in
   let* body = gen_block gstmt in
-  oneofl
-    [ Stmt_range (Range_decl { index; element; array; body })
-    ; Stmt_range (Range_assign { index; element; array; body })
-    ]
+  return (Stmt_range { index; element; variant; array; body })
 ;;
 
 let gen_stmt =

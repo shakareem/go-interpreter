@@ -25,6 +25,12 @@ and chan_type =
 (** identificator for a variable or a function *)
 type ident = string [@@deriving show { with_path = false }]
 
+(** Varinants of for with range stmt *)
+type range_variant =
+  | Decl (** Decl for with range such as [for i, elem := range array {}] *)
+  | Assign (** Assign for with range such as [for i, elem = range array {}] *)
+[@@deriving show { with_path = false }]
+
 (** Binary operators *)
 type bin_oper =
   | Bin_sum (** Binary sum: [+] *)
@@ -134,7 +140,18 @@ and stmt =
   (** A for statement such as:
       [for i := 0; i < n; i++ { do() }],
       [for range 1000 { a++ ; println(a) }] *)
-  | Stmt_range of range (** See range type *)
+  | Stmt_range of
+      { index : ident
+      ; element : ident option
+      ; variant : range_variant
+      (** represents whether there is decl [:=] or assign [=]
+          for index and element variables in for with range stmt *)
+      ; array : expr
+      ; body : block
+      }
+  (** For with range statement such as:
+      [for i, elem := range array { check(elem) }],
+      [for i = range array {println(i)}]*)
   | Stmt_break (** Break statement: [break] *)
   | Stmt_continue (** Continue statement: [continue] *)
   | Stmt_return of expr list
@@ -160,9 +177,9 @@ and assign =
   | Assign_mult_expr of (lvalue * expr) list
   (** Assignment to a variable with equal number of identifiers and initializers
       such as [a = 3], [a, b[0] = 4, 5]. Invariant: size of the list >= 1 *)
-  | Assign_one_expr of lvalue list * expr
+  | Assign_one_expr of lvalue list * func_call
   (** Assignment to a variable with multiple lvalues and
-      one initializer that is a function such as
+      one initializer that is a function call such as
       [a, b, c[i] = get_three()] . Invariant: size of the list >= 1 *)
 
 (** Block of statements in curly braces *)
@@ -179,7 +196,7 @@ and long_var_decl =
       [var a, b int = 1, 2],
       [var a, b = 1 + 2, "3"]
       Invariant: size of the list is >= 1 *)
-  | Long_decl_one_init of type' option * ident list * expr
+  | Long_decl_one_init of type' option * ident list * func_call
   (** Declarations with one initializer that is a function call
       for multiple identifiers such as [var a, b, c = get_three()].
       Invariant: size of the list is >= 1 *)
@@ -191,30 +208,10 @@ and short_var_decl =
   | Short_decl_mult_init of (ident * expr) list
   (** Declarations with initializer for each identifier such as [flag, count := true, 0].
       Invariant: size of the list is >= 1 *)
-  | Short_decl_one_init of ident list * expr
+  | Short_decl_one_init of ident list * func_call
   (** Declarations with one initializer that is a function call
       for multiple identifiers such as [a, b := get_two()].
       Invariant: size of the list is >= 1 *)
-[@@deriving show { with_path = false }]
-
-(** For with range statement *)
-and range =
-  | Range_decl of
-      { index : ident
-      ; element : ident option
-      ; array : expr
-      ; body : block
-      }
-  (** For with range statement with declaration of index and element variables such as:
-      [for i, elem := range array { check(elem) }] *)
-  | Range_assign of
-      { index : ident
-      ; element : ident option
-      ; array : expr
-      ; body : block
-      }
-  (** For with range statement with assigment of index and element variables such as:
-      [for i, elem = range array { check(elem) }] *)
 [@@deriving show { with_path = false }]
 
 (** Function declarations such as:

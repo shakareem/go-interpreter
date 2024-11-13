@@ -553,12 +553,11 @@ let%expect_test "stmt long decl mult var no type with one init" =
           (Long_decl_one_init
              ( None
              , [ "a"; "b"; "c" ]
-             , Expr_call
-                 ( Expr_ident "get_three"
-                 , [ Expr_const (Const_int 1)
-                   ; Expr_const (Const_int 2)
-                   ; Expr_const (Const_int 3)
-                   ] ) ))));
+             , ( Expr_ident "get_three"
+               , [ Expr_const (Const_int 1)
+                 ; Expr_const (Const_int 2)
+                 ; Expr_const (Const_int 3)
+                 ] ) ))));
   [%expect {| var a, b, c  = get_three(1, 2, 3) |}]
 ;;
 
@@ -569,7 +568,7 @@ let%expect_test "stmt long decl mult var with type with one init" =
           (Long_decl_one_init
              ( Some (Type_chan (Chan_receive (Type_array (5, Type_int))))
              , [ "a"; "b"; "c" ]
-             , Expr_call (Expr_ident "get", []) ))));
+             , (Expr_ident "get", []) ))));
   [%expect {| var a, b, c <-chan [5]int = get() |}]
 ;;
 
@@ -600,13 +599,12 @@ let%expect_test "stmt short var decl mult var and one init" =
        (Stmt_short_var_decl
           (Short_decl_one_init
              ( [ "a"; "b"; "c" ]
-             , Expr_call
-                 ( Expr_ident "three"
-                 , [ Expr_ident "abc"
-                   ; Expr_bin_oper
-                       (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 3))
-                   ; Expr_call (Expr_ident "fac", [ Expr_const (Const_int 25) ])
-                   ] ) ))));
+             , ( Expr_ident "three"
+               , [ Expr_ident "abc"
+                 ; Expr_bin_oper
+                     (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 3))
+                 ; Expr_call (Expr_ident "fac", [ Expr_const (Const_int 25) ])
+                 ] ) ))));
   [%expect {| a, b, c := three(abc, 2 + 3, fac(25)) |}]
 ;;
 
@@ -656,7 +654,7 @@ let%expect_test "stmt assign mult lvalues and one rvalue" =
                ; Lvalue_array_index (Lvalue_ident "b", Expr_const (Const_int 0))
                ; Lvalue_ident "c"
                ]
-             , Expr_call (Expr_ident "get_three", []) ))));
+             , (Expr_ident "get_three", []) ))));
   [%expect {| a, b[0], c = get_three() |}]
 ;;
 
@@ -758,8 +756,12 @@ let%expect_test "stmt range with decl only index" =
   print_endline
     (print_stmt
        (Stmt_range
-          (Range_decl
-             { index = "i"; element = None; array = Expr_ident "array"; body = [] })));
+          { index = "i"
+          ; element = None
+          ; variant = Decl
+          ; array = Expr_ident "array"
+          ; body = []
+          }));
   [%expect {| for i := range array {} |}]
 ;;
 
@@ -767,8 +769,12 @@ let%expect_test "stmt range with decl index and elem" =
   print_endline
     (print_stmt
        (Stmt_range
-          (Range_decl
-             { index = "i"; element = Some "elem"; array = Expr_ident "array"; body = [] })));
+          { index = "i"
+          ; element = Some "elem"
+          ; variant = Decl
+          ; array = Expr_ident "array"
+          ; body = []
+          }));
   [%expect {| for i, elem := range array {} |}]
 ;;
 
@@ -776,8 +782,12 @@ let%expect_test "stmt range with assign only index" =
   print_endline
     (print_stmt
        (Stmt_range
-          (Range_assign
-             { index = "i"; element = None; array = Expr_ident "array"; body = [] })));
+          { index = "i"
+          ; element = None
+          ; variant = Assign
+          ; array = Expr_ident "array"
+          ; body = []
+          }));
   [%expect {| for i = range array {} |}]
 ;;
 
@@ -785,8 +795,12 @@ let%expect_test "stmt range with assign index and elem" =
   print_endline
     (print_stmt
        (Stmt_range
-          (Range_assign
-             { index = "i"; element = Some "elem"; array = Expr_ident "array"; body = [] })));
+          { index = "i"
+          ; element = Some "elem"
+          ; variant = Assign
+          ; array = Expr_ident "array"
+          ; body = []
+          }));
   [%expect {| for i, elem = range array {} |}]
 ;;
 

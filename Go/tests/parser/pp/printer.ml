@@ -180,7 +180,7 @@ let print_long_decl pblock = function
       "var %s %s = %s"
       (sep_by_comma idents print_ident)
       print_type
-      (print_expr pblock init)
+      (print_func_call (print_expr pblock) init)
 ;;
 
 let print_short_decl pblock = function
@@ -191,7 +191,10 @@ let print_short_decl pblock = function
       (sep_by_comma idents print_ident)
       (sep_by_comma inits (print_expr pblock))
   | Short_decl_one_init (idents, init) ->
-    asprintf "%s := %s" (sep_by_comma idents print_ident) (print_expr pblock init)
+    asprintf
+      "%s := %s"
+      (sep_by_comma idents print_ident)
+      (print_func_call (print_expr pblock) init)
 ;;
 
 let rec print_lvalue pblock = function
@@ -211,7 +214,7 @@ let print_assign pblock = function
     asprintf
       "%s = %s"
       (sep_by_comma lvalues (print_lvalue pblock))
-      (print_expr pblock init)
+      (print_func_call (print_expr pblock) init)
 ;;
 
 let print_if pstmt pblock = function
@@ -259,24 +262,26 @@ let print_for pstmt pblock = function
   | _ -> ""
 ;;
 
-let print_range pblock range =
-  let index, element, array, body, operator =
-    match range with
-    | Range_decl { index; element; array; body } -> index, element, array, body, ":="
-    | Range_assign { index; element; array; body } -> index, element, array, body, "="
-  in
-  let print_element =
-    match element with
-    | Some elem -> ", " ^ elem
-    | None -> ""
-  in
-  asprintf
-    "for %s%s %s range %s %s"
-    index
-    print_element
-    operator
-    (print_expr pblock array)
-    (pblock body)
+let print_range pblock = function
+  | Stmt_range { index; element; variant; array; body } ->
+    let print_element =
+      match element with
+      | Some elem -> ", " ^ elem
+      | None -> ""
+    in
+    let print_operator =
+      match variant with
+      | Decl -> ":="
+      | Assign -> "="
+    in
+    asprintf
+      "for %s%s %s range %s %s"
+      index
+      print_element
+      print_operator
+      (print_expr pblock array)
+      (pblock body)
+  | _ -> ""
 ;;
 
 let rec print_stmt pblock = function
@@ -295,7 +300,7 @@ let rec print_stmt pblock = function
   | Stmt_chan_send (chan, expr) -> asprintf "%s <- %s" chan (print_expr pblock expr)
   | Stmt_if _ as if_stmt -> print_if (print_stmt pblock) pblock if_stmt
   | Stmt_for _ as for_stmt -> print_for (print_stmt pblock) pblock for_stmt
-  | Stmt_range range -> print_range pblock range
+  | Stmt_range _ as range_stmt -> print_range pblock range_stmt
 ;;
 
 let rec print_block block =

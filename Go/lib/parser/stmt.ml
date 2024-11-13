@@ -37,8 +37,7 @@ let parse_long_var_decl pblock =
     | _ :: _, false ->
       let* () = fail_if (List.length rvalues != 1) in
       (match List.nth rvalues 0 with
-       | Some (Expr_call _ as expr) ->
-         return (Long_decl_one_init (vars_type, lvalues, expr))
+       | Some (Expr_call call) -> return (Long_decl_one_init (vars_type, lvalues, call))
        | Some _ | None -> fail)
     | [], _ -> assert false
 ;;
@@ -53,8 +52,8 @@ let parse_short_var_decl pblock =
   else
     let* () = fail_if (List.length rvalues != 1) in
     match List.nth rvalues 0 with
-    | Some (Expr_call _ as expr) ->
-      return (Stmt_short_var_decl (Short_decl_one_init (lvalues, expr)))
+    | Some (Expr_call call) ->
+      return (Stmt_short_var_decl (Short_decl_one_init (lvalues, call)))
     | Some _ | None -> fail
 ;;
 
@@ -80,7 +79,7 @@ let parse_assign pblock =
   else
     let* () = fail_if (List.length rvalues != 1) in
     match List.nth rvalues 0 with
-    | Some (Expr_call _ as expr) -> return (Stmt_assign (Assign_one_expr (lvalues, expr)))
+    | Some (Expr_call call) -> return (Stmt_assign (Assign_one_expr (lvalues, call)))
     | Some _ | None -> fail
 ;;
 
@@ -214,14 +213,12 @@ let parse_range pblock =
     | first :: _ -> first, None
     | [] -> assert false
   in
-  let* is_with_decl =
-    ws_line *> (string ":=" *> return true <|> string "=" *> return false <|> fail)
+  let* variant =
+    ws_line *> (string ":=" *> return Decl <|> string "=" *> return Assign <|> fail)
   in
   let* array = ws *> string "range" *> ws *> parse_expr pblock in
   let* body = ws_line *> pblock in
-  if is_with_decl
-  then return (Stmt_range (Range_decl { index; element; array; body }))
-  else return (Stmt_range (Range_assign { index; element; array; body }))
+  return (Stmt_range { index; element; variant; array; body })
 ;;
 
 let parse_stmt pblock =
