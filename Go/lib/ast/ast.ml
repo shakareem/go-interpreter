@@ -50,6 +50,15 @@ type unary_oper =
   | Unary_recieve (** Unary channel recieve [<-] *)
 [@@deriving show { with_path = false }]
 
+(** Constructors for possible return constructions of a function.
+    Invariant: sizes of all lists are >= 1 *)
+type return_values =
+  | Only_types of type' list (** i.e.  [(int, bool, string)], [int]*)
+  | Ident_and_types of (ident * type') list
+  (** i.e.  [(a int, b string)], [(a , b int, c string)].
+      The second example will be processed at parsing as [(a int, b int, c string)] *)
+[@@deriving show { with_path = false }]
+
 (** Expressions that can be assigned to a variable or put in "if" statement *)
 type expr =
   | Expr_const of const (** Constants such as [5], ["hi"], [func()] *)
@@ -89,15 +98,6 @@ and anon_func =
   (** None if function doesn't return anything. See return_values type *)
   ; body : block (** function body *)
   }
-[@@deriving show { with_path = false }]
-
-(** Constructors for possible return constructions of a function.
-    Invariant: sizes of all lists are >= 1 *)
-and return_values =
-  | Only_types of type' list (** i.e.  [(int, bool, string)], [int]*)
-  | Ident_and_types of (ident * type') list
-  (** i.e.  [(a int, b string)], [(a , b int, c string)].
-      The second example will be processed at parsing as [(a int, b int, c string)] *)
 [@@deriving show { with_path = false }]
 
 (** function calls such as:

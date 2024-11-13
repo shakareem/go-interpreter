@@ -2,6 +2,7 @@
 
 (** SPDX-License-Identifier: MIT *)
 
+open Base
 open Ast
 open Angstrom
 open Common
@@ -29,7 +30,7 @@ let parse_long_var_decl pblock =
     | None -> fail "Long variable declaration without initializers should have type")
   else
     let* rvalues = parse_rvalues pblock in
-    if List.length lvalues = 0
+    if List.is_empty lvalues
     then fail "No identifiers in long variable declaration"
     else (
       match rvalues, List.length lvalues = List.length rvalues with
@@ -56,7 +57,7 @@ let parse_short_var_decl pblock =
   let* lvalues = parse_lvalues in
   let* _ = ws_line *> string ":=" *> ws in
   let* rvalues = parse_rvalues pblock in
-  if List.length lvalues = 0 || List.length rvalues = 0
+  if List.is_empty lvalues || List.is_empty rvalues
   then fail "No identifiers or initializers in short vaiable declarations"
   else if List.length lvalues != List.length rvalues
   then
@@ -92,7 +93,7 @@ let parse_assign pblock =
   let* lvalues = parse_assign_lvalues pblock in
   let* _ = ws_line *> char '=' *> ws in
   let* rvalues = parse_rvalues pblock in
-  if List.length lvalues = 0 || List.length rvalues = 0
+  if List.is_empty lvalues || List.is_empty rvalues
   then fail "No identifiers or initializers in assignment"
   else if List.length lvalues != List.length rvalues
   then
@@ -117,8 +118,7 @@ let parse_decr = parse_ident <* ws_line <* string "--" >>| fun id -> Stmt_decr i
 
 let parse_func_call pblock =
   parse_expr pblock
-  >>= fun expr ->
-  match expr with
+  >>= function
   | Expr_call call -> return call
   | _ -> fail "Not a function call"
 ;;
@@ -181,7 +181,7 @@ let parse_if pstmt pblock =
 
 let parse_default_for pstmt pblock =
   let* init = pstmt >>| Option.some <|> return None in
-  let ok_init = if is_valid_init_and_post init then true else false in
+  let ok_init = is_valid_init_and_post init in
   let* _ = parse_stmt_sep in
   let* cond = parse_expr pblock >>| Option.some <|> return None in
   let* _ = parse_stmt_sep in
@@ -191,7 +191,7 @@ let parse_default_for pstmt pblock =
     | '{' -> return None
     | _ -> pstmt >>| Option.some
   in
-  let ok_post = if is_valid_init_and_post init then true else false in
+  let ok_post = is_valid_init_and_post post in
   if not (ok_init && ok_post)
   then fail "Incorrect statement in for initialization or post statement"
   else

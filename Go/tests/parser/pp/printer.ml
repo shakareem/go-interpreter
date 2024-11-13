@@ -6,8 +6,7 @@ open Ast
 open Format
 
 let sep_by sep list print =
-  let rec helper acc list =
-    match list with
+  let rec helper acc = function
     | fst :: snd :: tl ->
       let acc = acc ^ print fst ^ sep in
       helper acc (snd :: tl)
@@ -41,8 +40,7 @@ let rec print_type = function
 ;;
 
 let print_idents_with_types list =
-  let rec helper acc list =
-    match list with
+  let rec helper acc = function
     | (id, t) :: snd :: tl ->
       let acc = acc ^ id ^ " " ^ print_type t ^ ", " in
       helper acc (snd :: tl)

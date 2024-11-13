@@ -43,18 +43,18 @@ let gen_chan_type gtype =
 
 let gen_type =
   sized_size (int_range 0 3)
-  @@ fix (fun self n ->
-    match n with
-    | 0 -> oneofl [ Type_int; Type_string; Type_bool ]
-    | n ->
-      oneof
-        [ return Type_int
-        ; return Type_string
-        ; return Type_bool
-        ; gen_array_type (self (n - 1))
-        ; gen_func_type (self (n - 1))
-        ; gen_chan_type (self (n - 1))
-        ])
+  @@ fix (fun self ->
+       function
+       | 0 -> oneofl [ Type_int; Type_string; Type_bool ]
+       | n ->
+         oneof
+           [ return Type_int
+           ; return Type_string
+           ; return Type_bool
+           ; gen_array_type (self (n - 1))
+           ; gen_func_type (self (n - 1))
+           ; gen_chan_type (self (n - 1))
+           ])
 ;;
 
 (********** const **********)
@@ -168,18 +168,18 @@ let gen_expr_func_call gexpr =
 
 let gen_expr gblock =
   sized_size (int_range 0 10)
-  @@ fix (fun self n ->
-    match n with
-    | 0 -> gen_expr_ident
-    | n ->
-      oneof
-        [ gen_expr_ident
-        ; gen_expr_const (self (n - 1)) gblock
-        ; gen_expr_index (self (n - 1))
-        ; gen_expr_bin_oper (self (n - 1))
-        ; gen_expr_un_oper (self (n - 1))
-        ; gen_expr_func_call (self (n - 1))
-        ])
+  @@ fix (fun self ->
+       function
+       | 0 -> gen_expr_ident
+       | n ->
+         oneof
+           [ gen_expr_ident
+           ; gen_expr_const (self (n - 1)) gblock
+           ; gen_expr_index (self (n - 1))
+           ; gen_expr_bin_oper (self (n - 1))
+           ; gen_expr_un_oper (self (n - 1))
+           ; gen_expr_func_call (self (n - 1))
+           ])
 ;;
 
 (********** stmt **********)
@@ -227,16 +227,16 @@ let gen_assign_lvalue gblock =
     return (Lvalue_ident ident)
   in
   sized_size (int_range 0 3)
-  @@ fix (fun self n ->
-    match n with
-    | 0 -> gen_lvalue_ident
-    | n ->
-      oneof
-        [ gen_lvalue_ident
-        ; (let* array = self (n - 1) in
-           let* index = gen_expr gblock in
-           return (Lvalue_array_index (array, index)))
-        ])
+  @@ fix (fun self ->
+       function
+       | 0 -> gen_lvalue_ident
+       | n ->
+         oneof
+           [ gen_lvalue_ident
+           ; (let* array = self (n - 1) in
+              let* index = gen_expr gblock in
+              return (Lvalue_array_index (array, index)))
+           ])
 ;;
 
 let gen_stmt_assign gblock =
@@ -327,26 +327,26 @@ let gen_stmt_range gstmt =
 
 let gen_stmt =
   sized_size (int_range 0 5)
-  @@ fix (fun self n ->
-    match n with
-    | 0 -> oneof [ gen_stmt_incr_decr; gen_stmt_break_continue ]
-    | n ->
-      let gblock = gen_block (self (n - 1)) in
-      oneof
-        [ gen_stmt_incr_decr
-        ; gen_stmt_break_continue
-        ; gen_stmt_long_decl gblock
-        ; gen_stmt_short_decl gblock
-        ; gen_stmt_assign gblock
-        ; gen_stmt_return gblock
-        ; gen_stmt_block (self (n - 1))
-        ; gen_stmt_chan_send gblock
-        ; gen_stmt_call gblock
-        ; gen_stmt_defer_go gblock
-        ; gen_stmt_if (self (n - 1))
-        ; gen_stmt_for (self (n - 1))
-        ; gen_stmt_range (self (n - 1))
-        ])
+  @@ fix (fun self ->
+       function
+       | 0 -> oneof [ gen_stmt_incr_decr; gen_stmt_break_continue ]
+       | n ->
+         let gblock = gen_block (self (n - 1)) in
+         oneof
+           [ gen_stmt_incr_decr
+           ; gen_stmt_break_continue
+           ; gen_stmt_long_decl gblock
+           ; gen_stmt_short_decl gblock
+           ; gen_stmt_assign gblock
+           ; gen_stmt_return gblock
+           ; gen_stmt_block (self (n - 1))
+           ; gen_stmt_chan_send gblock
+           ; gen_stmt_call gblock
+           ; gen_stmt_defer_go gblock
+           ; gen_stmt_if (self (n - 1))
+           ; gen_stmt_for (self (n - 1))
+           ; gen_stmt_range (self (n - 1))
+           ])
 ;;
 
 (********** top decl **********)
