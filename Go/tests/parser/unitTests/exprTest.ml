@@ -339,24 +339,48 @@ let%expect_test "nested indicies" =
 
 (********** complex exprs **********)
 
-let%expect_test "order arithmetic test" =
-  pp pp_expr pexpr "1 + 2 * 3";
+let%expect_test "bin operators precedence test" =
+  pp pp_expr pexpr "1 + 2 * 3 >= -1 - <-a / 2 || true && check()";
   [%expect
     {|
-    (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 1)),
-       (Expr_bin_oper (Bin_multiply, (Expr_const (Const_int 2)),
-          (Expr_const (Const_int 3))))
+    (Expr_bin_oper (Bin_or,
+       (Expr_bin_oper (Bin_greater_equal,
+          (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 1)),
+             (Expr_bin_oper (Bin_multiply, (Expr_const (Const_int 2)),
+                (Expr_const (Const_int 3))))
+             )),
+          (Expr_bin_oper (Bin_subtract,
+             (Expr_un_oper (Unary_minus, (Expr_const (Const_int 1)))),
+             (Expr_bin_oper (Bin_divide,
+                (Expr_un_oper (Unary_recieve, (Expr_ident "a"))),
+                (Expr_const (Const_int 2))))
+             ))
+          )),
+       (Expr_bin_oper (Bin_and, (Expr_ident "true"),
+          (Expr_call ((Expr_ident "check"), []))))
        ))|}]
 ;;
 
-let%expect_test "parens order arithmetic test" =
-  pp pp_expr pexpr "(1 + 2) * 3";
+let%expect_test "bin operators with parens precedence test" =
+  pp pp_expr pexpr "(1 + 2) * +((3 || 2 - a() / 4) == (true && false))";
   [%expect
     {|
     (Expr_bin_oper (Bin_multiply,
        (Expr_bin_oper (Bin_sum, (Expr_const (Const_int 1)),
           (Expr_const (Const_int 2)))),
-       (Expr_const (Const_int 3))))|}]
+       (Expr_un_oper (Unary_plus,
+          (Expr_bin_oper (Bin_equal,
+             (Expr_bin_oper (Bin_or, (Expr_const (Const_int 3)),
+                (Expr_bin_oper (Bin_subtract, (Expr_const (Const_int 2)),
+                   (Expr_bin_oper (Bin_divide,
+                      (Expr_call ((Expr_ident "a"), [])),
+                      (Expr_const (Const_int 4))))
+                   ))
+                )),
+             (Expr_bin_oper (Bin_and, (Expr_ident "true"), (Expr_ident "false")))
+             ))
+          ))
+       ))|}]
 ;;
 
 let%expect_test "expr logical operations" =

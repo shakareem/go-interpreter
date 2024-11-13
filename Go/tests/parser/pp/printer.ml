@@ -99,23 +99,62 @@ let print_un_op = function
   | Unary_recieve -> "<-"
 ;;
 
+let precedence = function
+  | Expr_const _ | Expr_ident _ -> 8
+  | Expr_call _ | Expr_index _ -> 7
+  | Expr_un_oper _ -> 6
+  | Expr_bin_oper (op, _, _) ->
+    (match op with
+     | Bin_multiply | Bin_divide | Bin_modulus -> 5
+     | Bin_sum | Bin_subtract -> 4
+     | Bin_equal
+     | Bin_not_equal
+     | Bin_greater
+     | Bin_greater_equal
+     | Bin_less
+     | Bin_less_equal -> 3
+     | Bin_and -> 2
+     | Bin_or -> 1)
+;;
+
 let print_func_call pexpr call =
   let func, args = call in
-  asprintf "%s(%s)" (pexpr func) (sep_by_comma args pexpr)
+  let print_func =
+    if 7 > precedence func then asprintf "(%s)" (pexpr func) else pexpr func
+  in
+  asprintf "%s(%s)" print_func (sep_by_comma args pexpr)
 ;;
 
 let rec print_expr pblock = function
   | Expr_const const -> print_const (print_expr pblock) pblock const
   | Expr_ident id -> id
-  | Expr_index (array, index) ->
-    asprintf "%s[%s]" ((print_expr pblock) array) ((print_expr pblock) index)
-  | Expr_bin_oper (operator, left_operand, right_operand) ->
-    asprintf
-      "(%s) %s (%s)"
-      ((print_expr pblock) left_operand)
-      (print_bin_op operator)
-      ((print_expr pblock) right_operand)
-  | Expr_un_oper (operator, operand) -> print_un_op operator ^ (print_expr pblock) operand
+  | Expr_index (array, index) as expr ->
+    let print_array =
+      if precedence expr > precedence array
+      then asprintf "(%s)" ((print_expr pblock) array)
+      else (print_expr pblock) array
+    in
+    asprintf "%s[%s]" print_array ((print_expr pblock) index)
+  | Expr_bin_oper (operator, left_operand, right_operand) as expr ->
+    let print_left =
+      if precedence expr > precedence left_operand
+      then asprintf "(%s)" ((print_expr pblock) left_operand)
+      else (print_expr pblock) left_operand
+    in
+    let print_oper = print_bin_op operator in
+    let print_right =
+      if precedence expr > precedence right_operand
+      then asprintf "(%s)" ((print_expr pblock) right_operand)
+      else (print_expr pblock) right_operand
+    in
+    asprintf "%s %s %s" print_left print_oper print_right
+  | Expr_un_oper (operator, operand) as expr ->
+    let print_operand =
+      if precedence expr > precedence operand
+      then asprintf "(%s)" ((print_expr pblock) operand)
+      else (print_expr pblock) operand
+    in
+    print_un_op operator ^ print_operand
   | Expr_call call -> print_func_call (print_expr pblock) call
 ;;
 

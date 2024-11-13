@@ -194,75 +194,75 @@ let%expect_test "expr multiple unary operators" =
 let%expect_test "expr bin sum" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_sum, Expr_const (Const_int 4), Expr_ident "i")));
-  [%expect {| (4) + (i) |}]
+  [%expect {| 4 + i |}]
 ;;
 
 let%expect_test "expr bin subtraction" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_subtract, Expr_ident "a", Expr_const (Const_int 5))));
-  [%expect {| (a) - (5) |}]
+  [%expect {| a - 5 |}]
 ;;
 
 let%expect_test "expr bin multiplication" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_multiply, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) * (5) |}]
+  [%expect {| t * 5 |}]
 ;;
 
 let%expect_test "expr bin division" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_divide, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) / (5) |}]
+  [%expect {| t / 5 |}]
 ;;
 
 let%expect_test "expr bin equality" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_equal, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) == (5) |}]
+  [%expect {| t == 5 |}]
 ;;
 
 let%expect_test "expr bin unequality" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_not_equal, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) != (5) |}]
+  [%expect {| t != 5 |}]
 ;;
 
 let%expect_test "expr bin greater" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_greater, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) > (5) |}]
+  [%expect {| t > 5 |}]
 ;;
 
 let%expect_test "expr bin greater or equal" =
   print_endline
     (print_expr
        (Expr_bin_oper (Bin_greater_equal, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) >= (5) |}]
+  [%expect {| t >= 5 |}]
 ;;
 
 let%expect_test "expr bin less" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_greater, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) > (5) |}]
+  [%expect {| t > 5 |}]
 ;;
 
 let%expect_test "expr bin less or equal" =
   print_endline
     (print_expr
        (Expr_bin_oper (Bin_less_equal, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) <= (5) |}]
+  [%expect {| t <= 5 |}]
 ;;
 
 let%expect_test "expr bin and" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_and, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) && (5) |}]
+  [%expect {| t && 5 |}]
 ;;
 
 let%expect_test "expr bin or" =
   print_endline
     (print_expr (Expr_bin_oper (Bin_or, Expr_ident "t", Expr_const (Const_int 5))));
-  [%expect {| (t) || (5) |}]
+  [%expect {| t || 5 |}]
 ;;
 
 let%expect_test "expr arithmetic expression" =
@@ -280,7 +280,7 @@ let%expect_test "expr arithmetic expression" =
                   ( Unary_minus
                   , Expr_bin_oper
                       (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 5)) ) ) )));
-  [%expect {| (-(5) + (2)) / (+-(2) + (5)) |}]
+  [%expect {| -(5 + 2) / +-(2 + 5) |}]
 ;;
 
 (*** func call ***)
@@ -299,7 +299,7 @@ let%expect_test "expr func call with multiple complex arguments" =
             ; Expr_bin_oper (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 3))
             ; Expr_call (Expr_ident "fac", [ Expr_const (Const_int 25) ])
             ] )));
-  [%expect {| three(abc, (2) + (3), fac(25)) |}]
+  [%expect {| three(abc, 2 + 3, fac(25)) |}]
 ;;
 
 let%expect_test "expr func call with array as a function" =
@@ -355,9 +355,56 @@ let%expect_test "expr nested indicies" =
   [%expect {| a[1][2][3] |}]
 ;;
 
-(********** stmt **********)
+let%expect_test "expr check bin operators precedence" =
+  print_endline
+    (print_expr
+       (Expr_bin_oper
+          ( Bin_or
+          , Expr_bin_oper
+              ( Bin_greater_equal
+              , Expr_bin_oper
+                  ( Bin_sum
+                  , Expr_const (Const_int 1)
+                  , Expr_bin_oper
+                      (Bin_multiply, Expr_const (Const_int 2), Expr_const (Const_int 3))
+                  )
+              , Expr_bin_oper
+                  ( Bin_subtract
+                  , Expr_un_oper (Unary_minus, Expr_const (Const_int 1))
+                  , Expr_bin_oper
+                      ( Bin_divide
+                      , Expr_un_oper (Unary_recieve, Expr_ident "a")
+                      , Expr_const (Const_int 2) ) ) )
+          , Expr_bin_oper (Bin_and, Expr_ident "true", Expr_call (Expr_ident "check", []))
+          )));
+  [%expect {| 1 + 2 * 3 >= -1 - <-a / 2 || true && check() |}]
+;;
 
-(*** break, continue, call, go, defer and channel send ***)
+let%expect_test "expr check bin operators precedence with parens" =
+  print_endline
+    (print_expr
+       (Expr_bin_oper
+          ( Bin_multiply
+          , Expr_bin_oper (Bin_sum, Expr_const (Const_int 1), Expr_const (Const_int 2))
+          , Expr_un_oper
+              ( Unary_plus
+              , Expr_bin_oper
+                  ( Bin_equal
+                  , Expr_bin_oper
+                      ( Bin_or
+                      , Expr_const (Const_int 3)
+                      , Expr_bin_oper
+                          ( Bin_subtract
+                          , Expr_const (Const_int 2)
+                          , Expr_bin_oper
+                              ( Bin_divide
+                              , Expr_call (Expr_ident "a", [])
+                              , Expr_const (Const_int 4) ) ) )
+                  , Expr_bin_oper (Bin_and, Expr_ident "true", Expr_ident "false") ) ) )));
+  [%expect {| (1 + 2) * +((3 || 2 - a() / 4) == (true && false)) |}]
+;;
+
+(********** stmt **********)
 
 (*** break and continue ***)
 
@@ -378,7 +425,7 @@ let%expect_test "stmt chan send" =
     (print_stmt
        (Stmt_chan_send
           ("c", Expr_bin_oper (Bin_sum, Expr_ident "sum", Expr_const (Const_int 1)))));
-  [%expect {| c <- (sum) + (1) |}]
+  [%expect {| c <- sum + 1 |}]
 ;;
 
 (*** incr and decr ***)
@@ -421,7 +468,7 @@ let%expect_test "stmt return with multiple exprs" =
               , Expr_un_oper (Unary_not, Expr_ident "a")
               , Expr_bin_oper (Bin_or, Expr_ident "b", Expr_ident "c") )
           ]));
-  [%expect {| return ((-5) * (_r)) + (8), (!a) && ((b) || (c)) |}]
+  [%expect {| return -5 * _r + 8, !a && (b || c) |}]
 ;;
 
 (*** func call, go, defer ***)
@@ -560,7 +607,7 @@ let%expect_test "stmt short var decl mult var and one init" =
                        (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 3))
                    ; Expr_call (Expr_ident "fac", [ Expr_const (Const_int 25) ])
                    ] ) ))));
-  [%expect {| a, b, c := three(abc, (2) + (3), fac(25)) |}]
+  [%expect {| a, b, c := three(abc, 2 + 3, fac(25)) |}]
 ;;
 
 (*** assign ***)
@@ -583,7 +630,7 @@ let%expect_test "stmt assign one lvalue that is an array index, one rvalue" =
                        (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 3)) )
                , Expr_const (Const_int 5) )
              ])));
-  [%expect {| a[i][(2) + (3)] = 5 |}]
+  [%expect {| a[i][2 + 3] = 5 |}]
 ;;
 
 let%expect_test "stmt assign with mult lvalues and rvalues" =
@@ -634,7 +681,7 @@ let%expect_test "stmt if with init" =
           ; if_body = []
           ; else_body = None
           }));
-  [%expect {| if k := 0; (k) == (test) {} |}]
+  [%expect {| if k := 0; k == test {} |}]
 ;;
 
 let%expect_test "stmt if with else that is a block" =
@@ -686,7 +733,7 @@ let%expect_test "stmt for with only condition" =
           ; post = None
           ; body = []
           }));
-  [%expect {| for (a) > (0) {} |}]
+  [%expect {| for a > 0 {} |}]
 ;;
 
 let%expect_test "stmt for with init, cond and post" =
@@ -702,7 +749,7 @@ let%expect_test "stmt for with init, cond and post" =
           ; post = Some (Stmt_incr "i")
           ; body = []
           }));
-  [%expect {| for i := 0; (i) < (10); i++ {} |}]
+  [%expect {| for i := 0; i < 10; i++ {} |}]
 ;;
 
 (*** range ***)
@@ -841,10 +888,10 @@ let%expect_test "file with factorial func" =
   [%expect
     {|
     func fac(n int) (int) {
-        if (n) == (1) {
+        if n == 1 {
             return 1
         } else {
-            return (n) * (fac((n) - (1)))
+            return n * fac(n - 1)
         }
     } |}]
 ;;
