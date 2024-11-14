@@ -55,11 +55,9 @@ type unary_oper =
   | Unary_minus (** Unary minus: [-]*)
 [@@deriving show { with_path = false }]
 
-(** Constructors for possible return constructions of a function.
-    Invariant: sizes of all lists are >= 1 *)
 type return_values =
-  | Only_types of type' list (** i.e.  [(int, bool, string)], [int]*)
-  | Ident_and_types of (ident * type') list
+  | Only_types of type' * type' list (** i.e.  [(int, bool, string)], [int]*)
+  | Ident_and_types of (ident * type') * (ident * type') list
   (** i.e.  [(a int, b string)], [(a , b int, c string)].
       The second example will be processed at parsing as [(a int, b int, c string)] *)
 [@@deriving show { with_path = false }]
@@ -115,43 +113,8 @@ and anon_func =
     Empty list means that function doesn't take any arguments *)
 and func_call = expr * expr list [@@deriving show { with_path = false }]
 
-(** Statement, a syntactic unit of imperative programming *)
-and stmt =
-  | Stmt_long_var_decl of long_var_decl (** See long_var_decl type *)
-  | Stmt_short_var_decl of short_var_decl (** See short_var_decl type *)
-  | Stmt_assign of assign (** See assign type *)
-  | Stmt_incr of ident (** An increment of a variable: [a++] *)
-  | Stmt_decr of ident (** A decrement of a variable: [a--] *)
-  | Stmt_if of
-      { init : stmt option
-      ; cond : expr
-      ; if_body : block
-      ; else_body : stmt option (* block or if statement or None *)
-      }
-  (** An if statement such as:
-      [if a := 5; a >= 4 {
-          do()
-      } else {
-          do_else()
-      }] *)
-  | Stmt_for of
-      { init : stmt option
-      ; cond : expr option
-      ; post : stmt option
-      ; body : block
-      } (** A for statement such as [for i := 0; i < n; i++ { do() }] *)
-  | Stmt_break (** Break statement: [break] *)
-  | Stmt_continue (** Continue statement: [continue] *)
-  | Stmt_return of expr list
-  (** Return statement such as
-      [return], [return some_expr], [return expr1, expr2] *)
-  | Stmt_block of block (** See block type *)
-  | Stmt_chan_send of ident * expr (** Channel send statement such as [c <- true] *)
-  | Stmt_chan_receive of chan_receive (** See chan_receive type *)
-  | Stmt_call of func_call (** See func_call type *)
-  | Stmt_defer of func_call (** Defer statement such as [defer clean()] *)
-  | Stmt_go of func_call (** Go statement such as [go call()] *)
-[@@deriving show { with_path = false }]
+(** Channel send such as [c <- true] *)
+and chan_send = ident * expr [@@deriving show { with_path = false }]
 
 (** Lvalue in assignments *)
 and lvalue =
@@ -163,45 +126,95 @@ and lvalue =
 
 (** Variable assignments *)
 and assign =
-  | Assign_mult_expr of (lvalue * expr) list
+  | Assign_mult_expr of (lvalue * expr) * (lvalue * expr) list
   (** Assignment to a variable with equal number of identifiers and initializers
-      such as [a = 3], [a, b[0] = 4, 5]. Invariant: size of the list >= 1 *)
-  | Assign_one_expr of lvalue list * func_call
+      such as [a = 3], [a, b[0] = 4, 5]. *)
+  | Assign_one_expr of lvalue * lvalue list * func_call
   (** Assignment to a variable with multiple lvalues and
       one initializer that is a function call such as
-      [a, b, c[i] = get_three()] . Invariant: size of the list >= 1 *)
-
-(** Block of statements in curly braces *)
-and block = stmt list [@@deriving show { with_path = false }]
+      [a, b, c[i] = get_three()] *)
 
 (** Variable declarations with [var] keyword *)
 and long_var_decl =
-  | Long_decl_no_init of type' * ident list
-  (** Declarations without initialization such as [var my_int1, my_int2 int].
-      Invariant: size of the list is >= 1 *)
-  | Long_decl_mult_init of type' option * (ident * expr) list
+  | Long_decl_no_init of type' * ident * ident list
+  (** Declarations without initialization such as [var my_int1, my_int2 int] *)
+  | Long_decl_mult_init of type' option * (ident * expr) * (ident * expr) list
   (** Declarations with initializer for each identifier such as:
       [var my_func func() = func() {}],
       [var a, b int = 1, 2],
-      [var a, b = 1 + 2, "3"]
-      Invariant: size of the list is >= 1 *)
-  | Long_decl_one_init of type' option * ident list * func_call
+      [var a, b = 1 + 2, "3"] *)
+  | Long_decl_one_init of type' option * ident * ident list * func_call
   (** Declarations with one initializer that is a function call
-      for multiple identifiers such as [var a, b, c = get_three()].
-      Invariant: size of the list is >= 1 *)
+      for multiple identifiers such as [var a, b, c = get_three()] *)
 [@@deriving show { with_path = false }]
 
 (** Short variable declarations withous [var] keyword
     such as [flag, count := true, 0], [a, b := get_two()]. *)
 and short_var_decl =
-  | Short_decl_mult_init of (ident * expr) list
-  (** Declarations with initializer for each identifier such as [flag, count := true, 0].
-      Invariant: size of the list is >= 1 *)
-  | Short_decl_one_init of ident list * func_call
+  | Short_decl_mult_init of (ident * expr) * (ident * expr) list
+  (** Declarations with initializer for each identifier such as [flag, count := true, 0] *)
+  | Short_decl_one_init of ident * ident list * func_call
   (** Declarations with one initializer that is a function call
-      for multiple identifiers such as [a, b := get_two()].
-      Invariant: size of the list is >= 1 *)
+      for multiple identifiers such as [a, b := get_two()] *)
 [@@deriving show { with_path = false }]
+
+(** Statements that can be used in if init and for init and post *)
+and if_for_init =
+  | Init_assign of assign (** [a = 0] *)
+  | Init_decl of short_var_decl (** [a := 0] *)
+  | Init_incr of ident (** [a++] *)
+  | Init_decr of ident (** [a--] *)
+  | Init_call of func_call (** [a()] *)
+  | Init_send of chan_send (** [c <- 1] *)
+  | Init_receive of chan_receive (** [<-c] *)
+[@@deriving show { with_path = false }]
+
+(** An if statement such as:
+    [if a := 5; a >= 4 {
+          do()
+      } else {
+          do_else()
+      }] *)
+and if' =
+  { init : if_for_init option
+  ; cond : expr
+  ; if_body : block
+  ; else_body : else_body option (* block or if statement or None *)
+  }
+
+and else_body =
+  | Else_block of block
+  | Else_if of if'
+
+(** Statement, a syntactic unit of imperative programming *)
+and stmt =
+  | Stmt_long_var_decl of long_var_decl (** See long_var_decl type *)
+  | Stmt_short_var_decl of short_var_decl (** See short_var_decl type *)
+  | Stmt_assign of assign (** See assign type *)
+  | Stmt_incr of ident (** An increment of a variable: [a++] *)
+  | Stmt_decr of ident (** A decrement of a variable: [a--] *)
+  | Stmt_break (** Break statement: [break] *)
+  | Stmt_continue (** Continue statement: [continue] *)
+  | Stmt_return of expr list
+  (** Return statement such as
+      [return], [return some_expr], [return expr1, expr2] *)
+  | Stmt_block of block (** See block type *)
+  | Stmt_chan_send of chan_send (** Channel send statement such as [c <- true] *)
+  | Stmt_chan_receive of chan_receive (** See chan_receive type *)
+  | Stmt_call of func_call (** See func_call type *)
+  | Stmt_defer of func_call (** Defer statement such as [defer clean()] *)
+  | Stmt_go of func_call (** Go statement such as [go call()] *)
+  | Stmt_if of if' (** If statement, see if' type *)
+  | Stmt_for of
+      { init : if_for_init option
+      ; cond : expr option
+      ; post : if_for_init option
+      ; body : block
+      } (** A for statement such as [for i := 0; i < n; i++ { do() }] *)
+[@@deriving show { with_path = false }]
+
+(** Block of statements in curly braces *)
+and block = stmt list [@@deriving show { with_path = false }]
 
 (** Function declarations such as:
     [func sum_and_diff(a, b int) (sum, diff int) {

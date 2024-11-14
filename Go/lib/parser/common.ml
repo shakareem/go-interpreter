@@ -88,7 +88,7 @@ let parse_chan_type ptype =
       ; string "chan" *> return Chan_bidirectional
       ]
   in
-  let* chan_type = ptype in
+  let* chan_type = ws *> ptype in
   return (Type_chan (chan_direction, chan_type))
 ;;
 

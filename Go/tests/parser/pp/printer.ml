@@ -57,12 +57,12 @@ let print_func_args_returns_and_body pblock anon_func =
   let { args; returns; body } = anon_func in
   let print_returns =
     match returns with
-    | Some (Only_types types) ->
-      (match types with
-       | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma types print_type)
-       | type' :: _ -> " " ^ print_type type'
-       | [] -> "")
-    | Some (Ident_and_types pairs) -> asprintf " (%s)" (print_idents_with_types pairs)
+    | Some (Only_types (hd, tl)) ->
+      (match tl with
+       | _ :: _ -> asprintf " (%s)" (sep_by_comma (hd :: tl) print_type)
+       | [] -> " " ^ print_type hd)
+    | Some (Ident_and_types (hd, tl)) ->
+      asprintf " (%s)" (print_idents_with_types (hd :: tl))
     | None -> ""
   in
   asprintf "(%s)%s %s" (print_idents_with_types args) print_returns (pblock body)
@@ -159,21 +159,21 @@ let rec print_expr pblock = function
 ;;
 
 let print_long_decl pblock = function
-  | Long_decl_no_init (type', idents) ->
-    asprintf "var %s %s" (sep_by_comma idents print_ident) (print_type type')
-  | Long_decl_mult_init (type', assigns) ->
+  | Long_decl_no_init (type', hd, tl) ->
+    asprintf "var %s %s" (sep_by_comma (hd :: tl) print_ident) (print_type type')
+  | Long_decl_mult_init (type', hd, tl) ->
     let print_type =
       match type' with
       | Some t -> " " ^ print_type t
       | None -> ""
     in
-    let idents, inits = List.split assigns in
+    let idents, inits = List.split (hd :: tl) in
     asprintf
       "var %s%s = %s"
       (sep_by_comma idents print_ident)
       print_type
       (sep_by_comma inits (print_expr pblock))
-  | Long_decl_one_init (type', idents, init) ->
+  | Long_decl_one_init (type', hd, tl, init) ->
     let print_type =
       match type' with
       | Some t -> print_type t
@@ -181,22 +181,22 @@ let print_long_decl pblock = function
     in
     asprintf
       "var %s %s = %s"
-      (sep_by_comma idents print_ident)
+      (sep_by_comma (hd :: tl) print_ident)
       print_type
       (print_func_call (print_expr pblock) init)
 ;;
 
 let print_short_decl pblock = function
-  | Short_decl_mult_init assigns ->
-    let idents, inits = List.split assigns in
+  | Short_decl_mult_init (hd, tl) ->
+    let idents, inits = List.split (hd :: tl) in
     asprintf
       "%s := %s"
       (sep_by_comma idents print_ident)
       (sep_by_comma inits (print_expr pblock))
-  | Short_decl_one_init (idents, init) ->
+  | Short_decl_one_init (hd, tl, init) ->
     asprintf
       "%s := %s"
-      (sep_by_comma idents print_ident)
+      (sep_by_comma (hd :: tl) print_ident)
       (print_func_call (print_expr pblock) init)
 ;;
 
@@ -207,45 +207,55 @@ let rec print_lvalue pblock = function
 ;;
 
 let print_assign pblock = function
-  | Assign_mult_expr assigns ->
-    let lvalues, inits = List.split assigns in
+  | Assign_mult_expr (hd, tl) ->
+    let lvalues, inits = List.split (hd :: tl) in
     asprintf
       "%s = %s"
       (sep_by_comma lvalues (print_lvalue pblock))
       (sep_by_comma inits (print_expr pblock))
-  | Assign_one_expr (lvalues, init) ->
+  | Assign_one_expr (hd, tl, init) ->
     asprintf
       "%s = %s"
-      (sep_by_comma lvalues (print_lvalue pblock))
+      (sep_by_comma (hd :: tl) (print_lvalue pblock))
       (print_func_call (print_expr pblock) init)
 ;;
 
-let print_if pstmt pblock = function
-  | Stmt_if { init; cond; if_body; else_body } ->
-    let print_init =
-      match init with
-      | Some init -> pstmt init ^ "; "
-      | None -> ""
-    in
-    let print_else_body =
-      match else_body with
-      | Some else_body -> "else " ^ pstmt else_body
-      | None -> ""
-    in
-    asprintf
-      "if %s%s %s %s"
-      print_init
-      (print_expr pblock cond)
-      (pblock if_body)
-      print_else_body
-  | _ -> ""
+let print_if_for_init pblock = function
+  | Init_assign assign -> print_assign pblock assign
+  | Init_decl decl -> print_short_decl pblock decl
+  | Init_incr id -> asprintf "%s++" id
+  | Init_decr id -> asprintf "%s--" id
+  | Init_call call -> print_func_call (print_expr pblock) call
+  | Init_send (chan, expr) -> asprintf "%s <- %s" chan (print_expr pblock expr)
+  | Init_receive chan -> asprintf "<-%s" (print_expr pblock chan)
 ;;
 
-let print_for pstmt pblock = function
+let rec print_if pblock if' =
+  let { init; cond; if_body; else_body } = if' in
+  let print_init =
+    match init with
+    | Some init -> print_if_for_init pblock init ^ "; "
+    | None -> ""
+  in
+  let print_else_body =
+    match else_body with
+    | Some (Else_block block) -> "else " ^ pblock block
+    | Some (Else_if if') -> "else " ^ print_if pblock if'
+    | None -> ""
+  in
+  asprintf
+    "if %s%s %s %s"
+    print_init
+    (print_expr pblock cond)
+    (pblock if_body)
+    print_else_body
+;;
+
+let print_for pblock = function
   | Stmt_for { init; cond; post; body } ->
     let print_init =
       match init with
-      | Some init -> pstmt init
+      | Some init -> print_if_for_init pblock init
       | None -> ""
     in
     let print_cond =
@@ -255,7 +265,7 @@ let print_for pstmt pblock = function
     in
     let print_post =
       match post with
-      | Some post -> " " ^ pstmt post
+      | Some post -> " " ^ print_if_for_init pblock post
       | None -> ""
     in
     (match init, cond, post with
@@ -265,7 +275,7 @@ let print_for pstmt pblock = function
   | _ -> ""
 ;;
 
-let rec print_stmt pblock = function
+let print_stmt pblock = function
   | Stmt_long_var_decl decl -> print_long_decl pblock decl
   | Stmt_short_var_decl decl -> print_short_decl pblock decl
   | Stmt_assign assign -> print_assign pblock assign
@@ -280,8 +290,8 @@ let rec print_stmt pblock = function
   | Stmt_go call -> "go " ^ print_func_call (print_expr pblock) call
   | Stmt_chan_send (chan, expr) -> asprintf "%s <- %s" chan (print_expr pblock expr)
   | Stmt_chan_receive chan -> asprintf "<-%s" (print_expr pblock chan)
-  | Stmt_if _ as if_stmt -> print_if (print_stmt pblock) pblock if_stmt
-  | Stmt_for _ as for_stmt -> print_for (print_stmt pblock) pblock for_stmt
+  | Stmt_if if' -> print_if pblock if'
+  | Stmt_for _ as for' -> print_for pblock for'
 ;;
 
 let rec print_block block =

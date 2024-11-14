@@ -105,7 +105,7 @@ let%expect_test "expr anon func with one arg and one return value" =
        (Expr_const
           (Const_func
              { args = [ "a", Type_int ]
-             ; returns = Some (Only_types [ Type_int ])
+             ; returns = Some (Only_types (Type_int, []))
              ; body = [ Stmt_return [ Expr_ident "a" ] ]
              })));
   [%expect {|
@@ -120,7 +120,7 @@ let%expect_test "expr anon func with mult args and return values" =
        (Expr_const
           (Const_func
              { args = [ "a", Type_int; "b", Type_string ]
-             ; returns = Some (Only_types [ Type_int; Type_string ])
+             ; returns = Some (Only_types (Type_int, [ Type_string ]))
              ; body = [ Stmt_return [ Expr_ident "a"; Expr_ident "b" ] ]
              })));
   [%expect {|
@@ -135,13 +135,13 @@ let%expect_test "expr anon func with mult args and named return values" =
        (Expr_const
           (Const_func
              { args = [ "a", Type_int; "b", Type_string ]
-             ; returns = Some (Ident_and_types [ "res1", Type_int; "res2", Type_string ])
+             ; returns =
+                 Some (Ident_and_types (("res1", Type_int), [ "res2", Type_string ]))
              ; body =
                  [ Stmt_assign
                      (Assign_mult_expr
-                        [ Lvalue_ident "res1", Expr_ident "a"
-                        ; Lvalue_ident "res2", Expr_ident "b"
-                        ])
+                        ( (Lvalue_ident "res1", Expr_ident "a")
+                        , [ Lvalue_ident "res2", Expr_ident "b" ] ))
                  ; Stmt_return []
                  ]
              })));
@@ -505,20 +505,21 @@ let%expect_test "stmt long decl single var no init" =
     (print_stmt
        (Stmt_long_var_decl
           (Long_decl_no_init
-             (Type_array (2, Type_array (3, Type_array (1, Type_bool))), [ "a" ]))));
+             (Type_array (2, Type_array (3, Type_array (1, Type_bool))), "a", []))));
   [%expect {| var a [2][3][1]bool |}]
 ;;
 
 let%expect_test "stmt long decl mult var no init" =
   print_endline
-    (print_stmt (Stmt_long_var_decl (Long_decl_no_init (Type_string, [ "a"; "b"; "c" ]))));
+    (print_stmt (Stmt_long_var_decl (Long_decl_no_init (Type_string, "a", [ "b"; "c" ]))));
   [%expect {| var a, b, c string |}]
 ;;
 
 let%expect_test "stmt long decl single var no type with init" =
   print_endline
     (print_stmt
-       (Stmt_long_var_decl (Long_decl_mult_init (None, [ "a", Expr_const (Const_int 5) ]))));
+       (Stmt_long_var_decl
+          (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))));
   [%expect {| var a = 5 |}]
 ;;
 
@@ -528,10 +529,8 @@ let%expect_test "stmt long decl multiple var no type with init" =
        (Stmt_long_var_decl
           (Long_decl_mult_init
              ( None
-             , [ "a", Expr_const (Const_int 5)
-               ; "b", Expr_ident "nil"
-               ; "c", Expr_const (Const_string "hi")
-               ] ))));
+             , ("a", Expr_const (Const_int 5))
+             , [ "b", Expr_ident "nil"; "c", Expr_const (Const_string "hi") ] ))));
   [%expect {| var a, b, c = 5, nil, "hi" |}]
 ;;
 
@@ -541,8 +540,8 @@ let%expect_test "stmt long decl one var with type with init" =
        (Stmt_long_var_decl
           (Long_decl_mult_init
              ( Some (Type_func ([], []))
-             , [ "a", Expr_const (Const_func { args = []; returns = None; body = [] }) ]
-             ))));
+             , ("a", Expr_const (Const_func { args = []; returns = None; body = [] }))
+             , [] ))));
   [%expect {| var a func() = func() {} |}]
 ;;
 
@@ -552,7 +551,8 @@ let%expect_test "stmt long decl mult var with type with init" =
        (Stmt_long_var_decl
           (Long_decl_mult_init
              ( Some Type_int
-             , [ "a", Expr_const (Const_int 2); "b", Expr_const (Const_int 3) ] ))));
+             , ("a", Expr_const (Const_int 2))
+             , [ "b", Expr_const (Const_int 3) ] ))));
   [%expect {| var a, b int = 2, 3 |}]
 ;;
 
@@ -562,7 +562,8 @@ let%expect_test "stmt long decl mult var no type with one init" =
        (Stmt_long_var_decl
           (Long_decl_one_init
              ( None
-             , [ "a"; "b"; "c" ]
+             , "a"
+             , [ "b"; "c" ]
              , ( Expr_ident "get_three"
                , [ Expr_const (Const_int 1)
                  ; Expr_const (Const_int 2)
@@ -577,7 +578,8 @@ let%expect_test "stmt long decl mult var with type with one init" =
        (Stmt_long_var_decl
           (Long_decl_one_init
              ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
-             , [ "a"; "b"; "c" ]
+             , "a"
+             , [ "b"; "c" ]
              , (Expr_ident "get", []) ))));
   [%expect {| var a, b, c <-chan [5]int = get() |}]
 ;;
@@ -587,7 +589,7 @@ let%expect_test "stmt long decl mult var with type with one init" =
 let%expect_test "stmt short single var decl" =
   print_endline
     (print_stmt
-       (Stmt_short_var_decl (Short_decl_mult_init [ "a", Expr_const (Const_int 7) ])));
+       (Stmt_short_var_decl (Short_decl_mult_init (("a", Expr_const (Const_int 7)), []))));
   [%expect {| a := 7 |}]
 ;;
 
@@ -596,10 +598,10 @@ let%expect_test "stmt short mult var decl" =
     (print_stmt
        (Stmt_short_var_decl
           (Short_decl_mult_init
-             [ "a", Expr_ident "true"
-             ; "b", Expr_const (Const_int 567)
-             ; "c", Expr_const (Const_string "string")
-             ])));
+             ( ("a", Expr_ident "true")
+             , [ "b", Expr_const (Const_int 567)
+               ; "c", Expr_const (Const_string "string")
+               ] ))));
   [%expect {| a, b, c := true, 567, "string" |}]
 ;;
 
@@ -608,7 +610,8 @@ let%expect_test "stmt short var decl mult var and one init" =
     (print_stmt
        (Stmt_short_var_decl
           (Short_decl_one_init
-             ( [ "a"; "b"; "c" ]
+             ( "a"
+             , [ "b"; "c" ]
              , ( Expr_ident "three"
                , [ Expr_ident "abc"
                  ; Expr_bin_oper
@@ -623,7 +626,7 @@ let%expect_test "stmt short var decl mult var and one init" =
 let%expect_test "stmt assign one ident lvalue, one rvalue" =
   print_endline
     (print_stmt
-       (Stmt_assign (Assign_mult_expr [ Lvalue_ident "a", Expr_const (Const_int 5) ])));
+       (Stmt_assign (Assign_mult_expr ((Lvalue_ident "a", Expr_const (Const_int 5)), []))));
   [%expect {| a = 5 |}]
 ;;
 
@@ -632,12 +635,12 @@ let%expect_test "stmt assign one lvalue that is an array index, one rvalue" =
     (print_stmt
        (Stmt_assign
           (Assign_mult_expr
-             [ ( Lvalue_array_index
+             ( ( Lvalue_array_index
                    ( Lvalue_array_index (Lvalue_ident "a", Expr_ident "i")
                    , Expr_bin_oper
                        (Bin_sum, Expr_const (Const_int 2), Expr_const (Const_int 3)) )
                , Expr_const (Const_int 5) )
-             ])));
+             , [] ))));
   [%expect {| a[i][2 + 3] = 5 |}]
 ;;
 
@@ -646,12 +649,12 @@ let%expect_test "stmt assign with mult lvalues and rvalues" =
     (print_stmt
        (Stmt_assign
           (Assign_mult_expr
-             [ Lvalue_ident "a", Expr_const (Const_int 5)
-             ; Lvalue_ident "b", Expr_ident "true"
-             ; ( Lvalue_array_index
-                   (Lvalue_ident "c", Expr_call (Expr_ident "get_index", []))
-               , Expr_const (Const_string "hello") )
-             ])));
+             ( (Lvalue_ident "a", Expr_const (Const_int 5))
+             , [ Lvalue_ident "b", Expr_ident "true"
+               ; ( Lvalue_array_index
+                     (Lvalue_ident "c", Expr_call (Expr_ident "get_index", []))
+                 , Expr_const (Const_string "hello") )
+               ] ))));
   [%expect {| a, b, c[get_index()] = 5, true, "hello" |}]
 ;;
 
@@ -660,8 +663,8 @@ let%expect_test "stmt assign mult lvalues and one rvalue" =
     (print_stmt
        (Stmt_assign
           (Assign_one_expr
-             ( [ Lvalue_ident "a"
-               ; Lvalue_array_index (Lvalue_ident "b", Expr_const (Const_int 0))
+             ( Lvalue_ident "a"
+             , [ Lvalue_array_index (Lvalue_ident "b", Expr_const (Const_int 0))
                ; Lvalue_ident "c"
                ]
              , (Expr_ident "get_three", []) ))));
@@ -683,8 +686,7 @@ let%expect_test "stmt if with init" =
        (Stmt_if
           { init =
               Some
-                (Stmt_short_var_decl
-                   (Short_decl_mult_init [ "k", Expr_const (Const_int 0) ]))
+                (Init_decl (Short_decl_mult_init (("k", Expr_const (Const_int 0)), [])))
           ; cond = Expr_bin_oper (Bin_equal, Expr_ident "k", Expr_ident "test")
           ; if_body = []
           ; else_body = None
@@ -699,7 +701,7 @@ let%expect_test "stmt if with else that is a block" =
           { init = None
           ; cond = Expr_ident "cond"
           ; if_body = []
-          ; else_body = Some (Stmt_block [])
+          ; else_body = Some (Else_block [])
           }));
   [%expect {| if cond {} else {} |}]
 ;;
@@ -713,7 +715,7 @@ let%expect_test "stmt if with else that is another if" =
           ; if_body = []
           ; else_body =
               Some
-                (Stmt_if
+                (Else_if
                    { init = None
                    ; cond = Expr_ident "cond2"
                    ; if_body = []
@@ -750,11 +752,10 @@ let%expect_test "stmt for with init, cond and post" =
        (Stmt_for
           { init =
               Some
-                (Stmt_short_var_decl
-                   (Short_decl_mult_init [ "i", Expr_const (Const_int 0) ]))
+                (Init_decl (Short_decl_mult_init (("i", Expr_const (Const_int 0)), [])))
           ; cond =
               Some (Expr_bin_oper (Bin_less, Expr_ident "i", Expr_const (Const_int 10)))
-          ; post = Some (Stmt_incr "i")
+          ; post = Some (Init_incr "i")
           ; body = []
           }));
   [%expect {| for i := 0; i < 10; i++ {} |}]
@@ -771,7 +772,9 @@ let%expect_test "stmt block of one stmt" =
   print_endline
     (print_stmt
        (Stmt_block
-          [ Stmt_short_var_decl (Short_decl_mult_init [ "a", Expr_const (Const_int 5) ]) ]));
+          [ Stmt_short_var_decl
+              (Short_decl_mult_init (("a", Expr_const (Const_int 5)), []))
+          ]));
   [%expect {|
     {
         a := 5
@@ -782,7 +785,8 @@ let%expect_test "stmt block of mult stmts" =
   print_endline
     (print_stmt
        (Stmt_block
-          [ Stmt_short_var_decl (Short_decl_mult_init [ "a", Expr_const (Const_int 5) ])
+          [ Stmt_short_var_decl
+              (Short_decl_mult_init (("a", Expr_const (Const_int 5)), []))
           ; Stmt_incr "a"
           ; Stmt_call (Expr_ident "println", [ Expr_ident "a" ])
           ]));
@@ -802,7 +806,7 @@ let%expect_test "file with simple func decl" =
        [ Decl_func
            ( "main"
            , { args = [ "a", Type_int ]
-             ; returns = Some (Only_types [ Type_bool ])
+             ; returns = Some (Only_types (Type_bool, []))
              ; body = []
              } )
        ]);
@@ -812,7 +816,7 @@ let%expect_test "file with simple func decl" =
 let%expect_test "file with multiple declarations" =
   print_endline
     (print_file
-       [ Decl_var (Long_decl_no_init (Type_int, [ "x" ]))
+       [ Decl_var (Long_decl_no_init (Type_int, "x", []))
        ; Decl_func ("main", { args = []; returns = None; body = [] })
        ]);
   [%expect {|
@@ -827,7 +831,7 @@ let%expect_test "file with factorial func" =
        [ Decl_func
            ( "fac"
            , { args = [ "n", Type_int ]
-             ; returns = Some (Only_types [ Type_int ])
+             ; returns = Some (Only_types (Type_int, []))
              ; body =
                  [ Stmt_if
                      { init = None
@@ -837,7 +841,7 @@ let%expect_test "file with factorial func" =
                      ; if_body = [ Stmt_return [ Expr_const (Const_int 1) ] ]
                      ; else_body =
                          Some
-                           (Stmt_block
+                           (Else_block
                               [ Stmt_return
                                   [ Expr_bin_oper
                                       ( Bin_multiply

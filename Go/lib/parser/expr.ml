@@ -113,9 +113,15 @@ let parse_func_args = parens parse_idents_with_types <|> parens ws *> return []
     [(int)], [[(int, string)], [(a int, b string)], [(a, b int, c string)]] *)
 let parse_func_return_values =
   choice
-    [ (parens parse_idents_with_types >>| fun returns -> Some (Ident_and_types returns))
-    ; (parens (sep_by_comma1 parse_type) >>| fun types -> Some (Only_types types))
-    ; (parse_type >>| fun t -> Some (Only_types [ t ]))
+    [ (parens parse_idents_with_types
+       >>| function
+       | hd :: tl -> Some (Ident_and_types (hd, tl))
+       | [] -> None)
+    ; (parens (sep_by_comma1 parse_type)
+       >>| function
+       | hd :: tl -> Some (Only_types (hd, tl))
+       | [] -> None)
+    ; (parse_type >>| fun t -> Some (Only_types (t, [])))
     ; (parens ws <|> return ()) *> return None
     ]
 ;;
