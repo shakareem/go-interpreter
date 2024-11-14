@@ -27,6 +27,6 @@ let parse_stmt = parse_stmt parse_block
 (** [parse_file] parses the whole program *)
 let parse_file = parse_file
 
-(** [parse parser str] runs [parser] in [str] and returns [Ok result] if it succeds,
+(** [parse parser str] runs [parser] on [str] and returns [Ok result] if it succeds,
     where [result] is an AST, or [Error msg] if not *)
 let parse parser str = Angstrom.parse_string ~consume:Angstrom.Consume.All parser str

@@ -81,16 +81,15 @@ let parse_array_type ptype =
 ;;
 
 let parse_chan_type ptype =
-  let parse_direction =
+  let* chan_direction =
     choice
-      [ string "<-" *> ws *> string "chan" *> return (fun type' -> Chan_receive type')
-      ; string "chan" *> ws *> string "<-" *> return (fun type' -> Chan_send type')
-      ; string "chan" *> return (fun type' -> Chan_bidirectional type')
+      [ string "<-" *> ws *> string "chan" *> return Chan_receive
+      ; string "chan" *> ws *> string "<-" *> return Chan_send
+      ; string "chan" *> return Chan_bidirectional
       ]
   in
-  let* chan_direction = parse_direction <* ws in
   let* chan_type = ptype in
-  return (Type_chan (chan_direction chan_type))
+  return (Type_chan (chan_direction, chan_type))
 ;;
 
 let parse_type =

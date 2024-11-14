@@ -51,17 +51,17 @@ let%expect_test "type complex func" =
 ;;
 
 let%expect_test "type bidirectional channel" =
-  print_endline (print_type (Type_chan (Chan_bidirectional Type_int)));
+  print_endline (print_type (Type_chan (Chan_bidirectional, Type_int)));
   [%expect {| chan int |}]
 ;;
 
 let%expect_test "type receive-only channel" =
-  print_endline (print_type (Type_chan (Chan_receive Type_string)));
+  print_endline (print_type (Type_chan (Chan_receive, Type_string)));
   [%expect {| <-chan string |}]
 ;;
 
 let%expect_test "type send-only channel" =
-  print_endline (print_type (Type_chan (Chan_send Type_string)));
+  print_endline (print_type (Type_chan (Chan_send, Type_string)));
   [%expect {| chan<- string |}]
 ;;
 
@@ -576,7 +576,7 @@ let%expect_test "stmt long decl mult var with type with one init" =
     (print_stmt
        (Stmt_long_var_decl
           (Long_decl_one_init
-             ( Some (Type_chan (Chan_receive (Type_array (5, Type_int))))
+             ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
              , [ "a"; "b"; "c" ]
              , (Expr_ident "get", []) ))));
   [%expect {| var a, b, c <-chan [5]int = get() |}]

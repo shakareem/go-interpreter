@@ -11,16 +11,16 @@ type type' =
   | Type_func of type' list * type' list
   (** Function types such as [func()], [func(string) (bool, int)].
       Empty lists mean that there is no arguments or return values *)
-  | Type_chan of chan_type
+  | Type_chan of chan_dir * type'
   (** Channel type such as:
       [chan int], [<-chan string], [chan<- bool] *)
 [@@deriving show { with_path = false }]
 
-(** Channel type *)
-and chan_type =
-  | Chan_bidirectional of type' (** Bidirectional channel type such as [chan int] *)
-  | Chan_receive of type' (** Receive-only channel type such as [<-chan string] *)
-  | Chan_send of type' (** Send-only channel type such as [chan<- bool] *)
+(** Channel direction *)
+and chan_dir =
+  | Chan_bidirectional (** Bidirectional channel type such as [chan int] *)
+  | Chan_receive (** Receive-only channel type such as [<-chan string] *)
+  | Chan_send (** Send-only channel type such as [chan<- bool] *)
 
 (** identificator for a variable or a function *)
 type ident = string [@@deriving show { with_path = false }]

@@ -32,11 +32,14 @@ let rec print_type = function
       | [] -> ""
     in
     asprintf "func(%s)%s" (sep_by_comma arg_types print_type) print_returns
-  | Type_chan chan_type ->
-    (match chan_type with
-     | Chan_bidirectional t -> asprintf "chan %s" (print_type t)
-     | Chan_receive t -> asprintf "<-chan %s" (print_type t)
-     | Chan_send t -> asprintf "chan<- %s" (print_type t))
+  | Type_chan (chan_dir, t) ->
+    let print_chan_dir =
+      match chan_dir with
+      | Chan_bidirectional -> "chan"
+      | Chan_receive -> "<-chan"
+      | Chan_send -> "chan<-"
+    in
+    asprintf "%s %s" print_chan_dir (print_type t)
 ;;
 
 let print_idents_with_types list =
