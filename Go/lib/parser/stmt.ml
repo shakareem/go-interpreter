@@ -12,7 +12,7 @@ let rec combine_lists l1 l2 =
   match l1, l2 with
   | [], [] -> []
   | x :: xs, y :: ys -> (x, y) :: combine_lists xs ys
-  | _, _ -> assert false (* bad, mb [] instead *)
+  | _, _ -> []
 ;;
 
 let parse_lvalues = sep_by_comma1 parse_ident
@@ -39,7 +39,7 @@ let parse_long_var_decl pblock =
       (match List.nth rvalues 0 with
        | Some (Expr_call call) -> return (Long_decl_one_init (vars_type, lvalues, call))
        | Some _ | None -> fail)
-    | [], _ -> assert false
+    | [], _ -> fail
 ;;
 
 let parse_short_var_decl pblock =
@@ -57,6 +57,8 @@ let parse_short_var_decl pblock =
     | Some _ | None -> fail
 ;;
 
+(** [parse_assign_lvalues pblock] parses {i one} or more assign lvalues
+    separated by comma such as: [a], [a, b], [a[][]], [a[], b] *)
 let parse_assign_lvalues pblock =
   let parse_lvalue =
     let rec helper acc =
@@ -110,8 +112,8 @@ let parse_chan_send pblock =
 ;;
 
 let parse_chan_receive pblock =
-  let* expr = string "<-" *> ws *> parse_expr pblock in
-  return (Stmt_chan_receive expr)
+  let* chan = string "<-" *> ws *> parse_expr pblock in
+  return (Stmt_chan_receive chan)
 ;;
 
 let parse_break = string "break" *> return Stmt_break
@@ -122,6 +124,8 @@ let parse_return pblock =
   >>| fun expr_list -> Stmt_return expr_list
 ;;
 
+(** [is_valid_init_and_post stmt] returns [true] if [stmt] can be used as init
+    in for or if or as post in for, and [false] if it can't *)
 let is_valid_init_and_post = function
   | Some (Stmt_short_var_decl _)
   | Some (Stmt_assign _)
@@ -210,10 +214,10 @@ let parse_stmt pblock =
 let parse_block : block t =
   fix (fun pblock ->
     char '{'
-    *> skip_many (ws *> parse_stmt_sep *> ws)
     *> ws
+    *> skip_many (parse_stmt_sep *> ws)
     *> sep_by (many1 parse_stmt_sep) (parse_stmt pblock)
-    <* skip_many (ws *> parse_stmt_sep *> ws)
     <* ws
+    <* skip_many (parse_stmt_sep *> ws)
     <* char '}')
 ;;

@@ -51,9 +51,10 @@ let parse_ident =
   let* first_char = satisfy is_first_char >>| Char.to_string in
   let* rest = take_while is_valid_char in
   let ident = first_char ^ rest in
-  if is_keyword ident then fail else return ident
+  fail_if (is_keyword ident) *> return ident
 ;;
 
+(** [parse_simple_type] parses [int], [bool] and [string] types *)
 let parse_simple_type =
   choice
     [ string "int" *> return Type_int
