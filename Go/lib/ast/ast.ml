@@ -53,7 +53,6 @@ type unary_oper =
   | Unary_not (** Unary negation: [!] *)
   | Unary_plus (** Unary plus: [+] *)
   | Unary_minus (** Unary minus: [-]*)
-  | Unary_recieve (** Unary channel recieve [<-] *)
 [@@deriving show { with_path = false }]
 
 (** Constructors for possible return constructions of a function.
@@ -74,8 +73,12 @@ type expr =
   | Expr_bin_oper of bin_oper * expr * expr
   (** Binary operations such as [a + b], [x || y] *)
   | Expr_un_oper of unary_oper * expr (** Unary operations such as [!z], [-f] *)
+  | Expr_chan_receive of chan_receive (** See chan_receive type *)
   | Expr_call of func_call (** See func_call type *)
 [@@deriving show { with_path = false }]
+
+(** Channel receive such as: [<-c], [<-<-get_chan()] *)
+and chan_receive = expr
 
 (** Constants, a.k.a. literals *)
 and const =
@@ -136,32 +139,18 @@ and stmt =
       ; cond : expr option
       ; post : stmt option
       ; body : block
-      }
-  (** A for statement such as:
-      [for i := 0; i < n; i++ { do() }],
-      [for range 1000 { a++ ; println(a) }] *)
-  | Stmt_range of
-      { index : ident
-      ; element : ident option
-      ; variant : range_variant
-      (** represents whether there is decl [:=] or assign [=]
-          for index and element variables in for with range stmt *)
-      ; array : expr
-      ; body : block
-      }
-  (** For with range statement such as:
-      [for i, elem := range array { check(elem) }],
-      [for i = range array {println(i)}]*)
+      } (** A for statement such as [for i := 0; i < n; i++ { do() }] *)
   | Stmt_break (** Break statement: [break] *)
   | Stmt_continue (** Continue statement: [continue] *)
   | Stmt_return of expr list
   (** Return statement such as
       [return], [return some_expr], [return expr1, expr2] *)
   | Stmt_block of block (** See block type *)
-  | Stmt_chan_send of ident * expr (** Channel send operation [c <- true] *)
+  | Stmt_chan_send of ident * expr (** Channel send statement such as [c <- true] *)
+  | Stmt_chan_receive of chan_receive (** See chan_receive type *)
   | Stmt_call of func_call (** See func_call type *)
-  | Stmt_defer of func_call (** See func_call type *)
-  | Stmt_go of func_call (** See func_call type *)
+  | Stmt_defer of func_call (** Defer statement such as [defer clean()] *)
+  | Stmt_go of func_call (** Go statement such as [go call()] *)
 [@@deriving show { with_path = false }]
 
 (** Lvalue in assignments *)

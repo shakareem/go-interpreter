@@ -25,16 +25,15 @@ let parse_stmt_sep = ws_line *> (char '\n' <|> char ';') *> ws
 let parse_int = take_while1 Char.is_digit >>| Int.of_string
 
 let is_keyword = function
-  (* https://go.dev/ref/spec#Keywords *)
   | "break"
-  | "chan"
-  | "defer"
-  | "else"
-  | "for"
   | "func"
+  | "defer"
   | "go"
+  | "chan"
   | "if"
-  | "range"
+  | "else"
+  | "continue"
+  | "for"
   | "return"
   | "var" -> true
   | _ -> false

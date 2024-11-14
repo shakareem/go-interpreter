@@ -25,13 +25,11 @@ let parse_unary_plus =
   char '+' *> ws *> return (fun expr -> Expr_un_oper (Unary_plus, expr))
 ;;
 
-let parse_unary_receive =
-  string "<-" *> ws *> return (fun expr -> Expr_un_oper (Unary_recieve, expr))
-;;
+let parse_chan_receive = string "<-" *> ws *> return (fun expr -> Expr_chan_receive expr)
 
 let parse_mult_unary_op pexpr =
   let rec helper acc =
-    choice [ parse_unary_not; parse_unary_minus; parse_unary_plus; parse_unary_receive ]
+    choice [ parse_unary_not; parse_unary_minus; parse_unary_plus; parse_chan_receive ]
     >>= (fun new_oper -> helper (fun expr -> acc @@ new_oper expr))
     <|> return acc
   in

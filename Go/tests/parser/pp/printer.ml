@@ -93,13 +93,12 @@ let print_un_op = function
   | Unary_not -> "!"
   | Unary_plus -> "+"
   | Unary_minus -> "-"
-  | Unary_recieve -> "<-"
 ;;
 
 let precedence = function
   | Expr_const _ | Expr_ident _ -> 8
   | Expr_call _ | Expr_index _ -> 7
-  | Expr_un_oper _ -> 6
+  | Expr_un_oper _ | Expr_chan_receive _ -> 6
   | Expr_bin_oper (op, _, _) ->
     (match op with
      | Bin_multiply | Bin_divide | Bin_modulus -> 5
@@ -152,6 +151,7 @@ let rec print_expr pblock = function
       else (print_expr pblock) operand
     in
     print_un_op operator ^ print_operand
+  | Expr_chan_receive chan -> asprintf "<-%s" ((print_expr pblock) chan)
   | Expr_call call -> print_func_call (print_expr pblock) call
 ;;
 
@@ -247,40 +247,18 @@ let print_for pstmt pblock = function
     in
     let print_cond =
       match cond with
-      | Some cond -> print_expr pblock cond
+      | Some cond -> " " ^ print_expr pblock cond
       | None -> ""
     in
     let print_post =
       match post with
-      | Some post -> pstmt post
+      | Some post -> " " ^ pstmt post
       | None -> ""
     in
     (match init, cond, post with
      | None, None, None -> asprintf "for %s" (pblock body)
-     | None, Some _, None -> asprintf "for %s %s" print_cond (pblock body)
-     | _ -> asprintf "for %s; %s; %s %s" print_init print_cond print_post (pblock body))
-  | _ -> ""
-;;
-
-let print_range pblock = function
-  | Stmt_range { index; element; variant; array; body } ->
-    let print_element =
-      match element with
-      | Some elem -> ", " ^ elem
-      | None -> ""
-    in
-    let print_operator =
-      match variant with
-      | Decl -> ":="
-      | Assign -> "="
-    in
-    asprintf
-      "for %s%s %s range %s %s"
-      index
-      print_element
-      print_operator
-      (print_expr pblock array)
-      (pblock body)
+     | None, Some _, None -> asprintf "for%s %s" print_cond (pblock body)
+     | _ -> asprintf "for %s;%s;%s %s" print_init print_cond print_post (pblock body))
   | _ -> ""
 ;;
 
@@ -298,9 +276,9 @@ let rec print_stmt pblock = function
   | Stmt_defer call -> "defer " ^ print_func_call (print_expr pblock) call
   | Stmt_go call -> "go " ^ print_func_call (print_expr pblock) call
   | Stmt_chan_send (chan, expr) -> asprintf "%s <- %s" chan (print_expr pblock expr)
+  | Stmt_chan_receive chan -> asprintf "<-%s" (print_expr pblock chan)
   | Stmt_if _ as if_stmt -> print_if (print_stmt pblock) pblock if_stmt
   | Stmt_for _ as for_stmt -> print_for (print_stmt pblock) pblock for_stmt
-  | Stmt_range _ as range_stmt -> print_range pblock range_stmt
 ;;
 
 let rec print_block block =

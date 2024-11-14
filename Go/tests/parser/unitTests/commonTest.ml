@@ -13,9 +13,9 @@ let%expect_test "ident with only letters" =
   [%expect {| myIdent |}]
 ;;
 
-let%expect_test "ident with uderscore" =
-  pp print_ident parse_ident {|my_ident|};
-  [%expect {| my_ident |}]
+let%expect_test "ident with first capital letter and underscore" =
+  pp print_ident parse_ident {|My_ident|};
+  [%expect {| My_ident |}]
 ;;
 
 let%expect_test "blank ident" =
@@ -30,6 +30,61 @@ let%expect_test "ident with numbers" =
 
 let%expect_test "ident with first char that is digit" =
   pp print_ident parse_ident {|1abc|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword break" =
+  pp print_ident parse_ident {|break|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword func" =
+  pp print_ident parse_ident {|func|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword defer" =
+  pp print_ident parse_ident {|defer|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword go" =
+  pp print_ident parse_ident {|go|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword chan" =
+  pp print_ident parse_ident {|chan|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword if" =
+  pp print_ident parse_ident {|if|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword else" =
+  pp print_ident parse_ident {|else|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword continue" =
+  pp print_ident parse_ident {|continue|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword for" =
+  pp print_ident parse_ident {|for|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword return" =
+  pp print_ident parse_ident {|return|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "ident keyword var" =
+  pp print_ident parse_ident {|var|};
   [%expect {| : syntax error |}]
 ;;
 

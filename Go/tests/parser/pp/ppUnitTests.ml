@@ -170,6 +170,11 @@ let%expect_test "expr unary not" =
   [%expect {| !t |}]
 ;;
 
+let%expect_test "expr chan receive" =
+  print_endline (print_expr (Expr_chan_receive (Expr_ident "c")));
+  [%expect {| <-c |}]
+;;
+
 let%expect_test "expr multiple unary operators" =
   print_endline
     (print_expr
@@ -373,7 +378,7 @@ let%expect_test "expr check bin operators precedence" =
                   , Expr_un_oper (Unary_minus, Expr_const (Const_int 1))
                   , Expr_bin_oper
                       ( Bin_divide
-                      , Expr_un_oper (Unary_recieve, Expr_ident "a")
+                      , Expr_chan_receive (Expr_ident "a")
                       , Expr_const (Const_int 2) ) ) )
           , Expr_bin_oper (Bin_and, Expr_ident "true", Expr_call (Expr_ident "check", []))
           )));
@@ -418,7 +423,7 @@ let%expect_test "stmt continue" =
   [%expect {| continue |}]
 ;;
 
-(*** chan send ***)
+(*** chan send and receive ***)
 
 let%expect_test "stmt chan send" =
   print_endline
@@ -426,6 +431,11 @@ let%expect_test "stmt chan send" =
        (Stmt_chan_send
           ("c", Expr_bin_oper (Bin_sum, Expr_ident "sum", Expr_const (Const_int 1)))));
   [%expect {| c <- sum + 1 |}]
+;;
+
+let%expect_test "stmt chan receive" =
+  print_endline (print_stmt (Stmt_chan_receive (Expr_ident "c")));
+  [%expect {| <-c |}]
 ;;
 
 (*** incr and decr ***)
@@ -748,60 +758,6 @@ let%expect_test "stmt for with init, cond and post" =
           ; body = []
           }));
   [%expect {| for i := 0; i < 10; i++ {} |}]
-;;
-
-(*** range ***)
-
-let%expect_test "stmt range with decl only index" =
-  print_endline
-    (print_stmt
-       (Stmt_range
-          { index = "i"
-          ; element = None
-          ; variant = Decl
-          ; array = Expr_ident "array"
-          ; body = []
-          }));
-  [%expect {| for i := range array {} |}]
-;;
-
-let%expect_test "stmt range with decl index and elem" =
-  print_endline
-    (print_stmt
-       (Stmt_range
-          { index = "i"
-          ; element = Some "elem"
-          ; variant = Decl
-          ; array = Expr_ident "array"
-          ; body = []
-          }));
-  [%expect {| for i, elem := range array {} |}]
-;;
-
-let%expect_test "stmt range with assign only index" =
-  print_endline
-    (print_stmt
-       (Stmt_range
-          { index = "i"
-          ; element = None
-          ; variant = Assign
-          ; array = Expr_ident "array"
-          ; body = []
-          }));
-  [%expect {| for i = range array {} |}]
-;;
-
-let%expect_test "stmt range with assign index and elem" =
-  print_endline
-    (print_stmt
-       (Stmt_range
-          { index = "i"
-          ; element = Some "elem"
-          ; variant = Assign
-          ; array = Expr_ident "array"
-          ; body = []
-          }));
-  [%expect {| for i, elem = range array {} |}]
 ;;
 
 (*** block ***)

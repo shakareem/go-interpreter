@@ -56,7 +56,7 @@ let%expect_test "unary not" =
   [%expect {| !t |}]
 ;;
 
-let%expect_test "unary recieve" =
+let%expect_test "unary receive" =
   pp print_expr parse_expr {|<-t|};
   [%expect {| <-t |}]
 ;;
@@ -85,6 +85,11 @@ let%expect_test "mul binop test" =
 let%expect_test "div binop test" =
   pp print_expr parse_expr {|t / 5|};
   [%expect {| t / 5 |}]
+;;
+
+let%expect_test "modulus binop test" =
+  pp print_expr parse_expr {|t % 5|};
+  [%expect {| t % 5 |}]
 ;;
 
 let%expect_test "equality binop test" =
@@ -318,25 +323,25 @@ let%expect_test "unary_min test" =
     -n + 2 + -1|}]
 ;;
 
-let%expect_test "channel recieve test" =
+let%expect_test "channel receive test" =
   pp print_expr parse_expr "<-c";
   [%expect {|
     <-c|}]
 ;;
 
-let%expect_test "channel recieve with unop test" =
+let%expect_test "channel receive with unop test" =
   pp print_expr parse_expr "-<-c";
   [%expect {|
     -<-c|}]
 ;;
 
-let%expect_test "channel recieve with binop test" =
+let%expect_test "channel receive with binop test" =
   pp print_expr parse_expr "-<-c + 1";
   [%expect {|
     -<-c + 1|}]
 ;;
 
-let%expect_test "channel neseted recieve test" =
+let%expect_test "channel neseted receive test" =
   pp print_expr parse_expr "<-<-<-c";
   [%expect {|
     <-<-<-c|}]

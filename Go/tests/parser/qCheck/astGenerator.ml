@@ -124,7 +124,12 @@ let gen_bin_op =
     ]
 ;;
 
-let gen_un_op = oneofl [ Unary_not; Unary_plus; Unary_minus; Unary_recieve ]
+let gen_un_op = oneofl [ Unary_not; Unary_plus; Unary_minus ]
+
+let gen_expr_chan_receive gexpr =
+  let* chan = gexpr in
+  return (Expr_chan_receive chan)
+;;
 
 let gen_expr_const gexpr gblock =
   let* const = gen_const gexpr gblock in
@@ -178,6 +183,7 @@ let gen_expr gblock =
            ; gen_expr_index (self (n - 1))
            ; gen_expr_bin_oper (self (n - 1))
            ; gen_expr_un_oper (self (n - 1))
+           ; gen_expr_chan_receive (self (n - 1))
            ; gen_expr_func_call (self (n - 1))
            ])
 ;;
@@ -314,15 +320,6 @@ let gen_stmt_for gstmt =
   return (Stmt_for { init; cond; post; body })
 ;;
 
-let gen_stmt_range gstmt =
-  let* index = gen_ident in
-  let* element = option gen_ident in
-  let* variant = oneofl [ Decl; Assign ] in
-  let* array = gen_expr (gen_block gstmt) in
-  let* body = gen_block gstmt in
-  return (Stmt_range { index; element; variant; array; body })
-;;
-
 let gen_stmt =
   sized_size (int_range 0 5)
   @@ fix (fun self ->
@@ -343,7 +340,6 @@ let gen_stmt =
            ; gen_stmt_defer_go gblock
            ; gen_stmt_if (self (n - 1))
            ; gen_stmt_for (self (n - 1))
-           ; gen_stmt_range (self (n - 1))
            ])
 ;;
 

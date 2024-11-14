@@ -6,7 +6,7 @@ open Parse
 open Pprinter.Printer
 open Pp
 
-(********** break, continue, go, defer and channel send **********)
+(********** break, continue, go, defer, channel send and receive **********)
 
 let%expect_test "break stmt" =
   pp print_stmt parse_stmt {|break|};
@@ -48,6 +48,12 @@ let%expect_test "stmt chan send" =
   pp print_stmt parse_stmt {|c <- sum + 1|};
   [%expect {|
     c <- sum + 1 |}]
+;;
+
+let%expect_test "stmt chan receive" =
+  pp print_stmt parse_stmt {|<-c|};
+  [%expect {|
+    <-c |}]
 ;;
 
 (********** incr and decr **********)
@@ -141,6 +147,18 @@ let%expect_test "stmt assign one lvalue, one rvalue" =
     a = 5 |}]
 ;;
 
+let%expect_test "stmt assign one lvalue, no rvalue" =
+  pp print_stmt parse_stmt {|a =|};
+  [%expect {|
+    : syntax error |}]
+;;
+
+let%expect_test "stmt assign no lvalue, one rvalue" =
+  pp print_stmt parse_stmt {|= 5|};
+  [%expect {|
+    : syntax error |}]
+;;
+
 let%expect_test "stmt assign one lvalue that is an array index, one rvalue" =
   pp print_stmt parse_stmt {|a[i][2 + 3] = 5|};
   [%expect {|
@@ -185,6 +203,16 @@ let%expect_test "stmt long single var decl without init" =
     var a string |}]
 ;;
 
+let%expect_test "stmt long single var decl without init and type" =
+  pp print_stmt parse_stmt {|var a|};
+  [%expect {| : syntax error |}]
+;;
+
+let%expect_test "stmt long single var decl with type, without vars and init" =
+  pp print_stmt parse_stmt {|var [0]int |};
+  [%expect {| : syntax error |}]
+;;
+
 let%expect_test "stmt long single var decl without init with mult array type" =
   pp print_stmt parse_stmt {|var a [2][3][1]bool|};
   [%expect {|
@@ -195,6 +223,12 @@ let%expect_test "stmt long single var decl no type" =
   pp print_stmt parse_stmt {|var a = 5|};
   [%expect {|
     var a = 5 |}]
+;;
+
+let%expect_test "stmt long decl no type and var" =
+  pp print_stmt parse_stmt {|var = 5|};
+  [%expect {|
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt long mult var decl no type" =
@@ -251,6 +285,18 @@ let%expect_test "stmt short single var decl" =
   pp print_stmt parse_stmt {|a := 7|};
   [%expect {|
     a := 7 |}]
+;;
+
+let%expect_test "stmt short decl without init" =
+  pp print_stmt parse_stmt {|a :=|};
+  [%expect {|
+    : syntax error |}]
+;;
+
+let%expect_test "stmt short decl with init, without var" =
+  pp print_stmt parse_stmt {|:= 5|};
+  [%expect {|
+    : syntax error |}]
 ;;
 
 let%expect_test "stmt short mult var decl" =
@@ -325,16 +371,52 @@ let%expect_test "stmt simple if" =
     if true {} |}]
 ;;
 
-let%expect_test "stmt if with init" =
+let%expect_test "stmt if with empty init" =
+  pp print_stmt parse_stmt {|if ; call() {}|};
+  [%expect {|
+    if call() {} |}]
+;;
+
+let%expect_test "stmt if with short decl init" =
   pp print_stmt parse_stmt {|if k := 0; k == test {}|};
   [%expect {|
     if k := 0; k == test {} |}]
 ;;
 
-let%expect_test "stmt if with empty init" =
-  pp print_stmt parse_stmt {|if ; call() {}|};
+let%expect_test "stmt if with assign init" =
+  pp print_stmt parse_stmt {|if k = 0; k == test {}|};
   [%expect {|
-    if call() {} |}]
+    if k = 0; k == test {} |}]
+;;
+
+let%expect_test "stmt if with incr init" =
+  pp print_stmt parse_stmt {|if k++; k == test {}|};
+  [%expect {|
+    if k++; k == test {} |}]
+;;
+
+let%expect_test "stmt if with decr init" =
+  pp print_stmt parse_stmt {|if k--; k == test {}|};
+  [%expect {|
+    if k--; k == test {} |}]
+;;
+
+let%expect_test "stmt if with call init" =
+  pp print_stmt parse_stmt {|if run_test(); true {}|};
+  [%expect {|
+    if run_test(); true {} |}]
+;;
+
+let%expect_test "stmt if with chan send init" =
+  pp print_stmt parse_stmt {|if c <- 5; true {}|};
+  [%expect {|
+    if c <- 5; true {} |}]
+;;
+
+let%expect_test "stmt if with chan receive init" =
+  pp print_stmt parse_stmt {|if <-c; true {}|};
+  [%expect {|
+    if <-c; true {} |}]
 ;;
 
 let%expect_test "stmt if with wrong init" =
@@ -381,68 +463,56 @@ let%expect_test "stmt empty for with semicolons" =
     for {} |}]
 ;;
 
-let%expect_test "stmt simple for" =
-  pp print_stmt parse_stmt {|for i := 0; i < 10; i++ {}|};
+let%expect_test "stmt default for with short decl in init and post" =
+  pp print_stmt parse_stmt {|for i := 0;; j := i + 1 {}|};
   [%expect {|
-    for i := 0; i < 10; i++ {} |}]
+    for i := 0;; j := i + 1 {} |}]
 ;;
 
-let%expect_test "stmt for with range and number" =
-  pp print_stmt parse_stmt {|for range 10 {}|};
+let%expect_test "stmt default for with assign in init and post" =
+  pp print_stmt parse_stmt {|for i = call();; i = i + 1 {}|};
   [%expect {|
-    for i := 0; i < 10; i++ {} |}]
+    for i = call();; i = i + 1 {} |}]
 ;;
 
-(********** range **********)
-
-let%expect_test "stmt range with decl only index" =
-  pp print_stmt parse_stmt {|for i := range array {}|};
+let%expect_test "stmt default for with call in init and post" =
+  pp print_stmt parse_stmt {|for start();; finish() {}|};
   [%expect {|
-    for i := range array {} |}]
+    for start();; finish() {} |}]
 ;;
 
-let%expect_test "stmt range with decl index and elem" =
-  pp print_stmt parse_stmt {|for i, elem := range array {}|};
+let%expect_test "stmt default for with incr in init and post" =
+  pp print_stmt parse_stmt {|for i++;; i++ {}|};
   [%expect {|
-    for i, elem := range array {} |}]
+    for i++;; i++ {} |}]
 ;;
 
-let%expect_test "stmt range with decl blank index and elem" =
-  pp print_stmt parse_stmt {|for _, _ := range array {}|};
+let%expect_test "stmt default for with decr in init and post" =
+  pp print_stmt parse_stmt {|for i--;; i-- {}|};
   [%expect {|
-    for _, _ := range array {} |}]
+    for i--;; i-- {} |}]
 ;;
 
-let%expect_test "stmt range with assign only index" =
-  pp print_stmt parse_stmt {|for i = range array {}|};
+let%expect_test "stmt default for with chan send in init and post" =
+  pp print_stmt parse_stmt {|for c <- 5;; c <- 5 {}|};
   [%expect {|
-    for i = range array {} |}]
+    for c <- 5;; c <- 5 {} |}]
 ;;
 
-let%expect_test "stmt range with assign index and elem" =
-  pp print_stmt parse_stmt {|for i, elem = range array {}|};
+let%expect_test "stmt default for with chan receive in init and post" =
+  pp print_stmt parse_stmt {|for <-c;; <-c {}|};
   [%expect {|
-    for i, elem = range array {} |}]
+    for <-c;; <-c {} |}]
 ;;
 
-let%expect_test "stmt range with assign blank index and elem" =
-  pp print_stmt parse_stmt {|for _, _ = range array {}|};
+let%expect_test "stmt default for with invalid stmt in init and post" =
+  pp print_stmt parse_stmt {|for go call(); i > 0; return {}|};
   [%expect {|
-    for _, _ = range array {} |}]
+    : syntax error |}]
 ;;
 
-let%expect_test "stmt range with more than two idents" =
-  pp print_stmt parse_stmt {|for a, b, c, d = range array {}|};
-  [%expect {| : syntax error |}]
-;;
-
-let%expect_test "stmt range without idents" =
-  pp print_stmt parse_stmt {|for := range array {}|};
-  [%expect {| : syntax error |}]
-;;
-
-let%expect_test "stmt range with const array" =
-  pp print_stmt parse_stmt {|for i, elem := range [3]int{1, 2, 3} {}|};
+let%expect_test "stmt default for with valid init and invalid post" =
+  pp print_stmt parse_stmt {|for call(); i > 0; break|};
   [%expect {|
-    for i, elem := range [3]int{1, 2, 3} {} |}]
+    : syntax error  |}]
 ;;

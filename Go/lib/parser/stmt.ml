@@ -109,6 +109,11 @@ let parse_chan_send pblock =
   return (Stmt_chan_send (chan, expr))
 ;;
 
+let parse_chan_receive pblock =
+  let* expr = string "<-" *> ws *> parse_expr pblock in
+  return (Stmt_chan_receive expr)
+;;
+
 let parse_break = string "break" *> return Stmt_break
 let parse_continue = string "continue" *> return Stmt_continue
 
@@ -123,6 +128,8 @@ let is_valid_init_and_post = function
   | Some (Stmt_incr _)
   | Some (Stmt_decr _)
   | Some (Stmt_call _)
+  | Some (Stmt_chan_send _)
+  | Some (Stmt_chan_receive _)
   | None -> true
   | _ -> false
 ;;
@@ -149,7 +156,6 @@ let parse_if pstmt pblock =
 
 let parse_default_for pstmt pblock =
   let* init = pstmt >>| Option.some <|> return None in
-  let ok_init = is_valid_init_and_post init in
   let* () = parse_stmt_sep in
   let* cond = parse_expr pblock >>| Option.some <|> return None in
   let* () = parse_stmt_sep in
@@ -159,12 +165,9 @@ let parse_default_for pstmt pblock =
     | '{' -> return None
     | _ -> pstmt >>| Option.some
   in
-  let ok_post = is_valid_init_and_post post in
-  if not (ok_init && ok_post)
-  then fail
-  else
-    let* body = ws_line *> pblock in
-    return (Stmt_for { init; cond; post; body })
+  let* () = fail_if (not (is_valid_init_and_post init && is_valid_init_and_post post)) in
+  let* body = ws_line *> pblock in
+  return (Stmt_for { init; cond; post; body })
 ;;
 
 let parse_for_only_cond pblock =
@@ -178,47 +181,8 @@ let parse_for_only_cond pblock =
   return (Stmt_for { init = None; cond; post = None; body })
 ;;
 
-let parse_for_range_n pblock =
-  let* () = string "range" *> ws in
-  let* range = parse_expr pblock in
-  let* body = ws_line *> pblock in
-  return
-    (Stmt_for
-       { init =
-           Some
-             (Stmt_short_var_decl (Short_decl_mult_init [ "i", Expr_const (Const_int 0) ]))
-       ; cond = Some (Expr_bin_oper (Bin_less, Expr_ident "i", range))
-       ; post = Some (Stmt_incr "i")
-       ; body
-       })
-;;
-
 let parse_for pstmt pblock =
-  string "for"
-  *> ws
-  *> choice
-       [ parse_default_for pstmt pblock
-       ; parse_for_only_cond pblock
-       ; parse_for_range_n pblock
-       ]
-;;
-
-let parse_range pblock =
-  let* () = string "for" *> ws in
-  let* idents = sep_by_comma1 parse_ident in
-  let* () = fail_if (List.length idents > 2) in
-  let index, element =
-    match idents with
-    | first :: second :: _ -> first, Some second
-    | first :: _ -> first, None
-    | [] -> assert false
-  in
-  let* variant =
-    ws_line *> (string ":=" *> return Decl <|> string "=" *> return Assign <|> fail)
-  in
-  let* array = ws *> string "range" *> ws *> parse_expr pblock in
-  let* body = ws_line *> pblock in
-  return (Stmt_range { index; element; variant; array; body })
+  string "for" *> ws *> (parse_default_for pstmt pblock <|> parse_for_only_cond pblock)
 ;;
 
 let parse_stmt pblock =
@@ -230,6 +194,7 @@ let parse_stmt pblock =
       ; parse_decr
       ; parse_if pstmt pblock
       ; parse_chan_send pblock
+      ; parse_chan_receive pblock
       ; parse_break
       ; parse_continue
       ; parse_return pblock
@@ -239,7 +204,6 @@ let parse_stmt pblock =
       ; parse_go pblock
       ; (pblock >>| fun block -> Stmt_block block)
       ; parse_for pstmt pblock
-      ; parse_range pblock
       ])
 ;;
 
