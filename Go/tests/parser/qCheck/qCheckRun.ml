@@ -5,13 +5,16 @@
 open AstGenerator
 open Pprinter.Printer
 open Parse
-open Format
+(* open AstShrinker *)
 
-let print_file fmt file = fprintf fmt "%s" (print_file file)
-let arbitrary_file = QCheck.make gen_file ~print:(Format.asprintf "%a" print_file);;
+let arbitrary_file_manual =
+  QCheck.make gen_file (* ~shrink:shrink_file *) ~print:print_file
+;;
 
-QCheck_base_runner.run_tests_main
-  [ QCheck.(
-      Test.make ~name:"QCheck test" ~count:10 arbitrary_file (fun file ->
-        Result.ok file = parse parse_file (Format.asprintf "%a" print_file file)))
-  ]
+let manual_test =
+  QCheck.(
+    Test.make ~name:"QCheck test" ~count:10 arbitrary_file_manual (fun file ->
+      Result.ok file = parse parse_file (print_file file)))
+;;
+
+QCheck_base_runner.run_tests_main [ manual_test ]
