@@ -187,14 +187,16 @@ let gen_expr gblock =
 let gen_long_decl gblock =
   let* type' = gen_type in
   let* first_id = gen_ident in
+  let* second_id = gen_ident in
   let* rest_ids = list_size int5 gen_ident in
   oneof
-    [ return (Long_decl_no_init (type', first_id, rest_ids))
+    [ return (Long_decl_no_init (type', first_id, second_id :: rest_ids))
     ; (let* first_assign = pair gen_ident (gen_expr gblock) in
        let* rest_assigns = list_size int5 (pair gen_ident (gen_expr gblock)) in
        return (Long_decl_mult_init (Option.some type', first_assign, rest_assigns)))
     ; (let* call = gen_func_call (gen_expr gblock) in
-       return (Long_decl_one_init (Option.some type', first_id, rest_ids, call)))
+       return
+         (Long_decl_one_init (Option.some type', first_id, second_id, rest_ids, call)))
     ]
 ;;
 
@@ -209,9 +211,10 @@ let gen_short_decl gblock =
        let* rest_assigns = list_size int5 (pair gen_ident (gen_expr gblock)) in
        return (Short_decl_mult_init (first_assign, rest_assigns)))
     ; (let* first_id = gen_ident in
+       let* second_id = gen_ident in
        let* rest_ids = list_size int5 gen_ident in
        let* call = gen_func_call (gen_expr gblock) in
-       return (Short_decl_one_init (first_id, rest_ids, call)))
+       return (Short_decl_one_init (first_id, second_id, rest_ids, call)))
     ]
 ;;
 
@@ -243,9 +246,10 @@ let gen_assign gblock =
        in
        return (Assign_mult_expr (fisrt_assign, rest_assigns)))
     ; (let* first_lvalue = gen_assign_lvalue gblock in
+       let* second_lvalue = gen_assign_lvalue gblock in
        let* rest_lvalues = list_size int5 (gen_assign_lvalue gblock) in
        let* call = gen_func_call (gen_expr gblock) in
-       return (Assign_one_expr (first_lvalue, rest_lvalues, call)))
+       return (Assign_one_expr (first_lvalue, second_lvalue, rest_lvalues, call)))
     ]
 ;;
 

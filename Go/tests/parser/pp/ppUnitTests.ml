@@ -55,6 +55,12 @@ let%expect_test "type bidirectional channel" =
   [%expect {| chan int |}]
 ;;
 
+let%expect_test "type bidirectional channel of receive-only channel" =
+  print_endline
+    (print_type (Type_chan (Chan_bidirectional, Type_chan (Chan_receive, Type_int))));
+  [%expect {| chan (<-chan int) |}]
+;;
+
 let%expect_test "type receive-only channel" =
   print_endline (print_type (Type_chan (Chan_receive, Type_string)));
   [%expect {| <-chan string |}]
@@ -172,6 +178,13 @@ let%expect_test "expr unary not" =
 
 let%expect_test "expr chan receive" =
   print_endline (print_expr (Expr_chan_receive (Expr_ident "c")));
+  [%expect {| <-c |}]
+;;
+
+let%expect_test "expr chan receive from complex expr" =
+  print_endline
+    (print_expr
+       (Expr_chan_receive (Expr_bin_oper (Bin_sum, Expr_ident "a", Expr_ident "b"))));
   [%expect {| <-c |}]
 ;;
 
@@ -563,7 +576,8 @@ let%expect_test "stmt long decl mult var no type with one init" =
           (Long_decl_one_init
              ( None
              , "a"
-             , [ "b"; "c" ]
+             , "b"
+             , [ "c" ]
              , ( Expr_ident "get_three"
                , [ Expr_const (Const_int 1)
                  ; Expr_const (Const_int 2)
@@ -579,7 +593,8 @@ let%expect_test "stmt long decl mult var with type with one init" =
           (Long_decl_one_init
              ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
              , "a"
-             , [ "b"; "c" ]
+             , "b"
+             , [ "c" ]
              , (Expr_ident "get", []) ))));
   [%expect {| var a, b, c <-chan [5]int = get() |}]
 ;;
@@ -611,7 +626,8 @@ let%expect_test "stmt short var decl mult var and one init" =
        (Stmt_short_var_decl
           (Short_decl_one_init
              ( "a"
-             , [ "b"; "c" ]
+             , "b"
+             , [ "c" ]
              , ( Expr_ident "three"
                , [ Expr_ident "abc"
                  ; Expr_bin_oper
@@ -664,9 +680,8 @@ let%expect_test "stmt assign mult lvalues and one rvalue" =
        (Stmt_assign
           (Assign_one_expr
              ( Lvalue_ident "a"
-             , [ Lvalue_array_index (Lvalue_ident "b", Expr_const (Const_int 0))
-               ; Lvalue_ident "c"
-               ]
+             , Lvalue_array_index (Lvalue_ident "b", Expr_const (Const_int 0))
+             , [ Lvalue_ident "c" ]
              , (Expr_ident "get_three", []) ))));
   [%expect {| a, b[0], c = get_three() |}]
 ;;

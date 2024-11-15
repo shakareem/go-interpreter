@@ -275,6 +275,26 @@ let%expect_test "bin operators with parens precedence test" =
     (1 + 2) * +((3 || 2 - a() / 4) == (true && false))|}]
 ;;
 
+let%expect_test "expr right associativity test 1" =
+  pp print_expr parse_expr {|(a || b) || c|};
+  [%expect {| (a || b) || c |}]
+;;
+
+let%expect_test "expr right associativity test 2" =
+  pp print_expr parse_expr {|a || (b || c)|};
+  [%expect {| a || b || c |}]
+;;
+
+let%expect_test "expr left associativity test 1" =
+  pp print_expr parse_expr {|a + (b + c)|};
+  [%expect {| a + (b + c) |}]
+;;
+
+let%expect_test "expr left associativity test 2" =
+  pp print_expr parse_expr {|(a + b) + c|};
+  [%expect {| a + b + c |}]
+;;
+
 let%expect_test "expr logical operations" =
   pp print_expr parse_expr {|a && (b || c)|};
   [%expect {|
@@ -290,7 +310,7 @@ let%expect_test "expr logical operations with binops" =
 let%expect_test "expr with multiple redundant parens" =
   pp print_expr parse_expr {|((((((((4)) + i * ((5) + ((8) + p))))))))|};
   [%expect {|
-    4 + i * (5 + 8 + p)|}]
+    4 + i * (5 + (8 + p))|}]
 ;;
 
 let%expect_test "expr bin mult and sum" =

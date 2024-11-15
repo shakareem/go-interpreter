@@ -39,7 +39,12 @@ let rec print_type = function
       | Chan_receive -> "<-chan"
       | Chan_send -> "chan<-"
     in
-    asprintf "%s %s" print_chan_dir (print_type t)
+    let print_type =
+      match t with
+      | Type_chan (Chan_receive, _) -> asprintf "(%s)" (print_type t)
+      | _ -> asprintf "%s" (print_type t)
+    in
+    asprintf "%s %s" print_chan_dir print_type
 ;;
 
 let print_idents_with_types list =
@@ -116,6 +121,15 @@ let precedence = function
      | Bin_or -> 1)
 ;;
 
+type assoc =
+  | Left
+  | Right
+
+let assoc = function
+  | Bin_and | Bin_or -> Right
+  | _ -> Left
+;;
+
 let print_func_call pexpr call =
   let func, args = call in
   let print_func =
@@ -138,11 +152,15 @@ let rec print_expr pblock = function
     let print_left =
       if precedence expr > precedence left_operand
       then asprintf "(%s)" ((print_expr pblock) left_operand)
+      else if precedence expr = precedence left_operand && assoc operator = Right
+      then asprintf "(%s)" ((print_expr pblock) left_operand)
       else (print_expr pblock) left_operand
     in
     let print_oper = print_bin_op operator in
     let print_right =
       if precedence expr > precedence right_operand
+      then asprintf "(%s)" ((print_expr pblock) right_operand)
+      else if precedence expr = precedence right_operand && assoc operator = Left
       then asprintf "(%s)" ((print_expr pblock) right_operand)
       else (print_expr pblock) right_operand
     in
@@ -154,7 +172,10 @@ let rec print_expr pblock = function
       else (print_expr pblock) operand
     in
     print_un_op operator ^ print_operand
-  | Expr_chan_receive chan -> asprintf "<-%s" ((print_expr pblock) chan)
+  | Expr_chan_receive operand as expr ->
+    if precedence expr > precedence operand
+    then asprintf "<-(%s)" ((print_expr pblock) operand)
+    else asprintf "<-%s" ((print_expr pblock) operand)
   | Expr_call call -> print_func_call (print_expr pblock) call
 ;;
 
@@ -173,7 +194,7 @@ let print_long_decl pblock = function
       (sep_by_comma idents print_ident)
       print_type
       (sep_by_comma inits (print_expr pblock))
-  | Long_decl_one_init (type', hd, tl, init) ->
+  | Long_decl_one_init (type', fst, snd, tl, init) ->
     let print_type =
       match type' with
       | Some t -> print_type t
@@ -181,7 +202,7 @@ let print_long_decl pblock = function
     in
     asprintf
       "var %s %s = %s"
-      (sep_by_comma (hd :: tl) print_ident)
+      (sep_by_comma (fst :: snd :: tl) print_ident)
       print_type
       (print_func_call (print_expr pblock) init)
 ;;
@@ -193,10 +214,10 @@ let print_short_decl pblock = function
       "%s := %s"
       (sep_by_comma idents print_ident)
       (sep_by_comma inits (print_expr pblock))
-  | Short_decl_one_init (hd, tl, init) ->
+  | Short_decl_one_init (fst, snd, tl, init) ->
     asprintf
       "%s := %s"
-      (sep_by_comma (hd :: tl) print_ident)
+      (sep_by_comma (fst :: snd :: tl) print_ident)
       (print_func_call (print_expr pblock) init)
 ;;
 
@@ -213,10 +234,10 @@ let print_assign pblock = function
       "%s = %s"
       (sep_by_comma lvalues (print_lvalue pblock))
       (sep_by_comma inits (print_expr pblock))
-  | Assign_one_expr (hd, tl, init) ->
+  | Assign_one_expr (fst, snd, tl, init) ->
     asprintf
       "%s = %s"
-      (sep_by_comma (hd :: tl) (print_lvalue pblock))
+      (sep_by_comma (fst :: snd :: tl) (print_lvalue pblock))
       (print_func_call (print_expr pblock) init)
 ;;
 

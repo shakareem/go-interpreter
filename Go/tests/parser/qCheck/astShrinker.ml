@@ -6,16 +6,23 @@ open QCheck.Shrink
 open QCheck.Iter
 open Ast
 
-let shrink_ident (_ : ident) = return "a"
+let shrink_ident id =
+  match id with
+  | "a" -> empty
+  | _ -> return "a"
+;;
 
 let rec shrink_type = function
-  | (Type_int | Type_string | Type_bool) as t -> return t
-  | Type_array (_, type') -> shrink_type type' >|= fun t -> Type_array (0, t)
+  | Type_int | Type_string | Type_bool -> empty
+  | Type_array (_, type') ->
+    return type' <+> shrink_type type' >|= fun t -> Type_array (0, t)
   | Type_func (arg_types, return_types) ->
     let* new_arg_types = list ~shrink:shrink_type arg_types in
     let* new_return_types = list ~shrink:shrink_type return_types in
-    return (Type_func (new_arg_types, new_return_types))
-  | Type_chan (chan_dir, type') -> shrink_type type' >|= fun t -> Type_chan (chan_dir, t)
+    of_list
+      [ Type_func (new_arg_types, return_types); Type_func (arg_types, new_return_types) ]
+  | Type_chan (chan_dir, type') ->
+    return type' <+> shrink_type type' >|= fun t -> Type_chan (chan_dir, t)
 ;;
 
 let shrink_id_and_type id_and_t =
@@ -24,43 +31,55 @@ let shrink_id_and_type id_and_t =
 ;;
 
 let shrink_anon_func shblock anon_func =
-  let { args; returns; body } = anon_func in
-  let* new_args = list ~shrink:shrink_id_and_type args in
-  let* new_returns =
-    match returns with
-    | Some (Ident_and_types (first, hd :: tl)) ->
-      let* new_ident_and_types = list ~shrink:shrink_id_and_type (first :: hd :: tl) in
-      (match new_ident_and_types with
-       | hd :: tl -> return (Some (Ident_and_types (hd, tl)))
-       | [] -> return None)
-    | Some (Ident_and_types (pair, [])) ->
-      let* new_pair = shrink_id_and_type pair in
-      of_list [ None; Some (Ident_and_types (new_pair, [])) ]
-    | Some (Only_types (first, hd :: tl)) ->
-      let* new_types = list ~shrink:shrink_type (first :: hd :: tl) in
-      (match new_types with
-       | hd :: tl -> return (Some (Only_types (hd, tl)))
-       | [] -> return None)
-    | Some (Only_types (type', [])) ->
-      let* new_type = shrink_type type' in
-      of_list [ None; Some (Only_types (new_type, [])) ]
-    | None -> return None
-  in
-  let* new_body = shblock body in
-  of_list
-    [ { args = new_args; returns; body }
-    ; { args; returns = new_returns; body }
-    ; { args; returns; body = new_body }
-    ]
+  if anon_func = { args = []; returns = None; body = [] }
+  then empty
+  else (
+    let { args; returns; body } = anon_func in
+    let* new_args = list ~shrink:shrink_id_and_type args in
+    let* new_returns =
+      match returns with
+      | Some (Ident_and_types (first, hd :: tl)) ->
+        let* new_ident_and_types = list ~shrink:shrink_id_and_type (first :: hd :: tl) in
+        (match new_ident_and_types with
+         | hd :: tl -> return (Some (Ident_and_types (hd, tl)))
+         | [] -> return None)
+      | Some (Ident_and_types (pair, [])) ->
+        let* new_pair = shrink_id_and_type pair in
+        of_list [ None; Some (Ident_and_types (new_pair, [])) ]
+      | Some (Only_types (first, hd :: tl)) ->
+        let* new_types = list ~shrink:shrink_type (first :: hd :: tl) in
+        (match new_types with
+         | hd :: tl -> return (Some (Only_types (hd, tl)))
+         | [] -> return None)
+      | Some (Only_types (type', [])) ->
+        let* new_type = shrink_type type' in
+        of_list [ None; Some (Only_types (new_type, [])) ]
+      | None -> empty
+    in
+    let* new_body = shblock body in
+    of_list
+      [ { args = new_args; returns; body }
+      ; { args; returns = new_returns; body }
+      ; { args; returns; body = new_body }
+      ])
 ;;
 
 let shrink_const shexpr shblock = function
-  | Const_int _ -> return (Const_int 0)
-  | Const_string _ -> return (Const_string "")
+  | Const_int num ->
+    (match num with
+     | 0 -> empty
+     | _ -> return (Const_int 0))
+  | Const_string str ->
+    (match str with
+     | "" -> empty
+     | _ -> return (Const_string ""))
   | Const_array (_, type', inits) ->
     let* new_type = shrink_type type' in
-    let* new_inits = list ~shrink:shexpr inits in
-    of_list [ Const_array (0, new_type, inits); Const_array (0, type', new_inits) ]
+    if (new_type, inits) = (type', [])
+    then empty
+    else
+      let* new_inits = list ~shrink:shexpr inits in
+      of_list [ Const_array (0, new_type, inits); Const_array (0, type', new_inits) ]
   | Const_func anon_func -> shrink_anon_func shblock anon_func >|= fun f -> Const_func f
 ;;
 
@@ -93,6 +112,12 @@ let shrink_id_with_expr shblock id_and_expr =
   pair (shrink_ident id) (shrink_expr shblock expr)
 ;;
 
+let shrink_type_option type' =
+  match type' with
+  | Some t -> return None <+> (shrink_type t >|= Option.some)
+  | None -> empty
+;;
+
 let shrink_long_decl shblock = function
   | Long_decl_no_init (type', first, hd :: tl) ->
     let* new_type = shrink_type type' in
@@ -112,11 +137,7 @@ let shrink_long_decl shblock = function
     of_list
       [ Long_decl_no_init (new_type, first, []); Long_decl_no_init (type', new_id, []) ]
   | Long_decl_mult_init (type', first, hd :: tl) ->
-    let* new_type =
-      match type' with
-      | Some t -> shrink_type t >|= Option.some
-      | None -> return None
-    in
+    let* new_type = shrink_type_option type' in
     let* new_first, new_rest =
       let* new_assigns = list ~shrink:(shrink_id_with_expr shblock) (first :: hd :: tl) in
       match new_assigns with
@@ -128,44 +149,34 @@ let shrink_long_decl shblock = function
       ; Long_decl_mult_init (type', new_first, new_rest)
       ]
   | Long_decl_mult_init (type', first, []) ->
-    let* new_type =
-      match type' with
-      | Some t -> shrink_type t >|= Option.some
-      | None -> return None
-    in
+    let* new_type = shrink_type_option type' in
     let* new_assign = shrink_id_with_expr shblock first in
     of_list
       [ Long_decl_mult_init (new_type, first, [])
       ; Long_decl_mult_init (type', new_assign, [])
       ]
-  | Long_decl_one_init (type', first, hd :: tl, call) ->
-    let* new_type =
-      match type' with
-      | Some t -> shrink_type t >|= Option.some
-      | None -> return None
-    in
-    let* new_first, new_rest =
-      let* new_idents = list ~shrink:shrink_ident (first :: hd :: tl) in
+  | Long_decl_one_init (type', first, second, hd :: tl, call) ->
+    let* new_type = shrink_type_option type' in
+    let* new_first, new_second, new_rest =
+      let* new_idents = list ~shrink:shrink_ident (first :: second :: hd :: tl) in
       match new_idents with
-      | hd :: tl -> return (hd, tl)
-      | [] -> of_list [ first, []; hd, [] ]
+      | fst :: snd :: tl -> return (fst, snd, tl)
+      | _ :: [] | [] -> return (first, second, [])
     in
     let* new_call = shrink_func_call (shrink_expr shblock) call in
     of_list
-      [ Long_decl_one_init (new_type, first, hd :: tl, call)
-      ; Long_decl_one_init (type', new_first, new_rest, call)
-      ; Long_decl_one_init (type', first, hd :: tl, new_call)
+      [ Long_decl_one_init (new_type, first, second, hd :: tl, call)
+      ; Long_decl_one_init (type', new_first, new_second, new_rest, call)
+      ; Long_decl_one_init (type', first, second, hd :: tl, new_call)
       ]
-  | Long_decl_one_init (type', first, [], call) ->
-    let* new_type =
-      match type' with
-      | Some t -> shrink_type t >|= Option.some
-      | None -> return None
-    in
+  | Long_decl_one_init (type', first, second, [], call) ->
+    let* new_type = shrink_type_option type' in
     let* new_call = shrink_func_call (shrink_expr shblock) call in
     of_list
-      [ Long_decl_one_init (new_type, first, [], call)
-      ; Long_decl_one_init (type', first, [], new_call)
+      [ Long_decl_one_init (new_type, first, second, [], call)
+      ; Long_decl_one_init (type', first, second, [], new_call)
+      ; Long_decl_mult_init (type', (first, Expr_call call), [])
+      ; Long_decl_mult_init (type', (second, Expr_call call), [])
       ]
 ;;
 
@@ -181,21 +192,25 @@ let shrink_short_decl shblock = function
   | Short_decl_mult_init (first, []) ->
     shrink_id_with_expr shblock first
     >|= fun new_pair -> Short_decl_mult_init (new_pair, [])
-  | Short_decl_one_init (first, hd :: tl, call) ->
-    let* new_first, new_rest =
-      let* new_idents = list ~shrink:shrink_ident (first :: hd :: tl) in
+  | Short_decl_one_init (first, second, hd :: tl, call) ->
+    let* new_first, new_second, new_rest =
+      let* new_idents = list ~shrink:shrink_ident (first :: second :: hd :: tl) in
       match new_idents with
-      | hd :: tl -> return (hd, tl)
-      | [] -> of_list [ first, []; hd, [] ]
+      | fst :: snd :: tl -> return (fst, snd, tl)
+      | _ :: [] | [] -> return (first, second, [])
     in
     let* new_call = shrink_func_call (shrink_expr shblock) call in
     of_list
-      [ Short_decl_one_init (new_first, new_rest, call)
-      ; Short_decl_one_init (first, hd :: tl, new_call)
+      [ Short_decl_one_init (new_first, new_second, new_rest, call)
+      ; Short_decl_one_init (first, second, hd :: tl, new_call)
       ]
-  | Short_decl_one_init (first, [], call) ->
-    shrink_func_call (shrink_expr shblock) call
-    >|= fun new_call -> Short_decl_one_init (first, [], new_call)
+  | Short_decl_one_init (first, second, [], call) ->
+    let* new_call = shrink_func_call (shrink_expr shblock) call in
+    of_list
+      [ Short_decl_one_init (first, second, [], new_call)
+      ; Short_decl_mult_init ((first, Expr_call call), [])
+      ; Short_decl_mult_init ((second, Expr_call call), [])
+      ]
 ;;
 
 let rec shrink_lvalue shblcok = function
@@ -231,21 +246,27 @@ let shrink_assign shblock = function
   | Assign_mult_expr (first, []) ->
     shrink_lvalue_with_expr shblock first
     >|= fun new_pair -> Assign_mult_expr (new_pair, [])
-  | Assign_one_expr (first, hd :: tl, call) ->
-    let* new_first, new_rest =
-      let* new_lvalues = list ~shrink:(shrink_lvalue shblock) (first :: hd :: tl) in
+  | Assign_one_expr (first, second, hd :: tl, call) ->
+    let* new_first, new_second, new_rest =
+      let* new_lvalues =
+        list ~shrink:(shrink_lvalue shblock) (first :: second :: hd :: tl)
+      in
       match new_lvalues with
-      | hd :: tl -> return (hd, tl)
-      | [] -> of_list [ first, []; hd, [] ]
+      | fst :: snd :: tl -> return (fst, snd, tl)
+      | _ :: [] | [] -> return (first, second, [])
     in
     let* new_call = shrink_func_call (shrink_expr shblock) call in
     of_list
-      [ Assign_one_expr (new_first, new_rest, call)
-      ; Assign_one_expr (first, hd :: tl, new_call)
+      [ Assign_one_expr (new_first, new_second, new_rest, call)
+      ; Assign_one_expr (first, second, hd :: tl, new_call)
       ]
-  | Assign_one_expr (first, [], call) ->
-    shrink_func_call (shrink_expr shblock) call
-    >|= fun new_call -> Assign_one_expr (first, [], new_call)
+  | Assign_one_expr (first, second, [], call) ->
+    let* new_call = shrink_func_call (shrink_expr shblock) call in
+    of_list
+      [ Assign_one_expr (first, second, [], new_call)
+      ; Assign_mult_expr ((first, Expr_call call), [])
+      ; Assign_mult_expr ((second, Expr_call call), [])
+      ]
 ;;
 
 let shrink_chan_send shblock send =
@@ -269,19 +290,21 @@ let shrink_if_for_init shblock = function
 let rec shrink_if shblock if' =
   let { init; cond; if_body; else_body } = if' in
   let* new_init =
-    (match init with
-     | Some init -> shrink_if_for_init shblock init >|= Option.some <+> return None
-     | None -> return None)
-    <+> return None
+    return None
+    <+>
+    match init with
+    | Some init -> return None <+> (shrink_if_for_init shblock init >|= Option.some)
+    | None -> empty
   in
   let* new_cond = shrink_expr shblock cond in
   let* new_if_body = shblock if_body in
   let* new_else_body =
-    (match else_body with
-     | Some (Else_block block) -> shblock block >|= fun block -> Some (Else_block block)
-     | Some (Else_if if') -> shrink_if shblock if' >|= fun if' -> Some (Else_if if')
-     | None -> return None)
-    <+> return None
+    return None
+    <+>
+    match else_body with
+    | Some (Else_block block) -> shblock block >|= fun block -> Some (Else_block block)
+    | Some (Else_if if') -> shrink_if shblock if' >|= fun if' -> Some (Else_if if')
+    | None -> empty
   in
   of_list
     [ { init = new_init; cond; if_body; else_body }
@@ -316,22 +339,25 @@ let shrink_stmt shblock = function
   | Stmt_if if' -> shrink_if shblock if' >|= fun if' -> Stmt_if if'
   | Stmt_for { init; cond; post; body } ->
     let* new_init =
-      (match init with
-       | Some init -> shrink_if_for_init shblock init >|= Option.some
-       | None -> return None)
-      <+> return None
+      return None
+      <+>
+      match init with
+      | Some init -> return None <+> (shrink_if_for_init shblock init >|= Option.some)
+      | None -> empty
     in
     let* new_cond =
-      (match cond with
-       | Some cond -> shrink_expr shblock cond >|= Option.some
-       | None -> return None)
-      <+> return None
+      return None
+      <+>
+      match cond with
+      | Some cond -> return None <+> (shrink_expr shblock cond >|= Option.some)
+      | None -> empty
     in
     let* new_post =
-      (match post with
-       | Some post -> shrink_if_for_init shblock post >|= Option.some
-       | None -> return None)
-      <+> return None
+      return None
+      <+>
+      match post with
+      | Some post -> return None <+> (shrink_if_for_init shblock post >|= Option.some)
+      | None -> empty
     in
     let* new_body = shblock body in
     of_list

@@ -129,7 +129,7 @@ and assign =
   | Assign_mult_expr of (lvalue * expr) * (lvalue * expr) list
   (** Assignment to a variable with equal number of identifiers and initializers
       such as [a = 3], [a, b[0] = 4, 5]. *)
-  | Assign_one_expr of lvalue * lvalue list * func_call
+  | Assign_one_expr of lvalue * lvalue * lvalue list * func_call
   (** Assignment to a variable with multiple lvalues and
       one initializer that is a function call such as
       [a, b, c[i] = get_three()] *)
@@ -143,7 +143,7 @@ and long_var_decl =
       [var my_func func() = func() {}],
       [var a, b int = 1, 2],
       [var a, b = 1 + 2, "3"] *)
-  | Long_decl_one_init of type' option * ident * ident list * func_call
+  | Long_decl_one_init of type' option * ident * ident * ident list * func_call
   (** Declarations with one initializer that is a function call
       for multiple identifiers such as [var a, b, c = get_three()] *)
 [@@deriving show { with_path = false }]
@@ -153,7 +153,7 @@ and long_var_decl =
 and short_var_decl =
   | Short_decl_mult_init of (ident * expr) * (ident * expr) list
   (** Declarations with initializer for each identifier such as [flag, count := true, 0] *)
-  | Short_decl_one_init of ident * ident list * func_call
+  | Short_decl_one_init of ident * ident * ident list * func_call
   (** Declarations with one initializer that is a function call
       for multiple identifiers such as [a, b := get_two()] *)
 [@@deriving show { with_path = false }]

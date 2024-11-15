@@ -33,10 +33,10 @@ let parse_long_var_decl pblock =
     match lvalues, rvalues, List.length lvalues = List.length rvalues with
     | lhd :: ltl, rhd :: rtl, true ->
       return (Long_decl_mult_init (vars_type, (lhd, rhd), combine_lists ltl rtl))
-    | lhd :: ltl, rhd :: _, false ->
+    | lfst :: lsnd :: ltl, rhd :: _, false ->
       let* () = fail_if (List.length rvalues != 1) in
       (match rhd with
-       | Expr_call call -> return (Long_decl_one_init (vars_type, lhd, ltl, call))
+       | Expr_call call -> return (Long_decl_one_init (vars_type, lfst, lsnd, ltl, call))
        | _ -> fail)
     | _ -> fail
 ;;
@@ -45,15 +45,14 @@ let parse_short_var_decl pblock =
   let* lvalues = parse_lvalues in
   let* () = ws_line *> string ":=" *> ws in
   let* rvalues = parse_rvalues pblock in
-  match lvalues, rvalues with
-  | lhd :: ltl, rhd :: rtl ->
-    if List.length lvalues = List.length rvalues
-    then return (Short_decl_mult_init ((lhd, rhd), combine_lists ltl rtl))
-    else
-      let* () = fail_if (List.length rvalues != 1) in
-      (match rhd with
-       | Expr_call call -> return (Short_decl_one_init (lhd, ltl, call))
-       | _ -> fail)
+  match lvalues, rvalues, List.length lvalues = List.length rvalues with
+  | lhd :: ltl, rhd :: rtl, true ->
+    return (Short_decl_mult_init ((lhd, rhd), combine_lists ltl rtl))
+  | lfst :: lsnd :: ltl, rhd :: _, false ->
+    let* () = fail_if (List.length rvalues != 1) in
+    (match rhd with
+     | Expr_call call -> return (Short_decl_one_init (lfst, lsnd, ltl, call))
+     | _ -> fail)
   | _ -> fail
 ;;
 
@@ -75,15 +74,14 @@ let parse_assign pblock =
   let* lvalues = parse_assign_lvalues pblock in
   let* () = ws_line *> char '=' *> ws in
   let* rvalues = parse_rvalues pblock in
-  match lvalues, rvalues with
-  | lhd :: ltl, rhd :: rtl ->
-    if List.length lvalues = List.length rvalues
-    then return (Assign_mult_expr ((lhd, rhd), combine_lists ltl rtl))
-    else
-      let* () = fail_if (List.length rvalues != 1) in
-      (match rhd with
-       | Expr_call call -> return (Assign_one_expr (lhd, ltl, call))
-       | _ -> fail)
+  match lvalues, rvalues, List.length lvalues = List.length rvalues with
+  | lhd :: ltl, rhd :: rtl, true ->
+    return (Assign_mult_expr ((lhd, rhd), combine_lists ltl rtl))
+  | lfst :: lsnd :: ltl, rhd :: _, false ->
+    let* () = fail_if (List.length rvalues != 1) in
+    (match rhd with
+     | Expr_call call -> return (Assign_one_expr (lfst, lsnd, ltl, call))
+     | _ -> fail)
   | _ -> fail
 ;;
 
