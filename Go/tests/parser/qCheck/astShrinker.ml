@@ -17,10 +17,10 @@ let rec shrink_type = function
   | Type_array (_, type') ->
     return type' <+> shrink_type type' >|= fun t -> Type_array (0, t)
   | Type_func (arg_types, return_types) ->
-    let* new_arg_types = list ~shrink:shrink_type arg_types in
-    let* new_return_types = list ~shrink:shrink_type return_types in
-    of_list
-      [ Type_func (new_arg_types, return_types); Type_func (arg_types, new_return_types) ]
+    list ~shrink:shrink_type arg_types
+    >|= (fun new_arg_types -> Type_func (new_arg_types, return_types))
+    <+> (list ~shrink:shrink_type return_types
+         >|= fun new_return_types -> Type_func (arg_types, new_return_types))
   | Type_chan (chan_dir, type') ->
     return type' <+> shrink_type type' >|= fun t -> Type_chan (chan_dir, t)
 ;;

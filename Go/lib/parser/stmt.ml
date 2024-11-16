@@ -34,7 +34,7 @@ let parse_long_var_decl pblock =
     | lhd :: ltl, rhd :: rtl, true ->
       return (Long_decl_mult_init (vars_type, (lhd, rhd), combine_lists ltl rtl))
     | lfst :: lsnd :: ltl, rhd :: _, false ->
-      let* () = fail_if (List.length rvalues != 1) in
+      let* () = fail_if (List.length rvalues <> 1) in
       (match rhd with
        | Expr_call call -> return (Long_decl_one_init (vars_type, lfst, lsnd, ltl, call))
        | _ -> fail)
@@ -49,7 +49,7 @@ let parse_short_var_decl pblock =
   | lhd :: ltl, rhd :: rtl, true ->
     return (Short_decl_mult_init ((lhd, rhd), combine_lists ltl rtl))
   | lfst :: lsnd :: ltl, rhd :: _, false ->
-    let* () = fail_if (List.length rvalues != 1) in
+    let* () = fail_if (List.length rvalues <> 1) in
     (match rhd with
      | Expr_call call -> return (Short_decl_one_init (lfst, lsnd, ltl, call))
      | _ -> fail)
@@ -78,7 +78,7 @@ let parse_assign pblock =
   | lhd :: ltl, rhd :: rtl, true ->
     return (Assign_mult_expr ((lhd, rhd), combine_lists ltl rtl))
   | lfst :: lsnd :: ltl, rhd :: _, false ->
-    let* () = fail_if (List.length rvalues != 1) in
+    let* () = fail_if (List.length rvalues <> 1) in
     (match rhd with
      | Expr_call call -> return (Assign_one_expr (lfst, lsnd, ltl, call))
      | _ -> fail)

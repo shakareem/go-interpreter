@@ -75,7 +75,18 @@ let print_func_args_returns_and_body pblock anon_func =
 
 let print_const pexpr pblock = function
   | Const_int num -> asprintf "%i" num
-  | Const_string str -> "\"" ^ str ^ "\""
+  | Const_string str ->
+    let buffer = Buffer.create (String.length str) in
+    String.iter
+      (function
+        | '\\' -> Buffer.add_string buffer "\\\\"
+        | '"' -> Buffer.add_string buffer "\\\""
+        | '\n' -> Buffer.add_string buffer "\\n"
+        | '\t' -> Buffer.add_string buffer "\\t"
+        | '\r' -> Buffer.add_string buffer "\\r"
+        | c -> Buffer.add_char buffer c)
+      str;
+    "\"" ^ Buffer.contents buffer ^ "\""
   | Const_array (size, type', inits) ->
     asprintf "[%i]%s{%s}" size (print_type type') (sep_by_comma inits pexpr)
   | Const_func anon_func -> "func" ^ print_func_args_returns_and_body pblock anon_func
@@ -319,11 +330,10 @@ let rec print_block block =
   match block with
   | [] -> "{}"
   | _ :: _ ->
-    let replace old_sub new_sub str =
-      let old_sub = Str.regexp_string old_sub in
-      Str.global_replace old_sub new_sub str
-    in
-    replace "\n" "\n    " (asprintf "{\n%s" (sep_by "\n" block (print_stmt print_block)))
+    Str.global_replace
+      (Str.regexp "\n")
+      "\n    "
+      (asprintf "{\n%s" (sep_by "\n" block (print_stmt print_block)))
     ^ "\n}"
 ;;
 

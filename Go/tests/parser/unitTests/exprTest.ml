@@ -34,9 +34,24 @@ let%expect_test "const string" =
   [%expect {| "my_string" |}]
 ;;
 
+let%expect_test "const empty string" =
+  pp print_expr parse_expr {|""|};
+  [%expect {| "" |}]
+;;
+
 let%expect_test "string with '\n'" =
   pp print_expr parse_expr {|"Hello\n"|};
   [%expect {| "Hello\n" |}]
+;;
+
+let%expect_test "const string with escaped backslash" =
+  pp print_expr parse_expr {|"\\"|};
+  [%expect {| "\\" |}]
+;;
+
+let%expect_test "const string with escaped quote" =
+  pp print_expr parse_expr {|"\""|};
+  [%expect {| "\"" |}]
 ;;
 
 (********** arithmetics **********)

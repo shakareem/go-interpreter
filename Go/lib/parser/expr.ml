@@ -63,7 +63,7 @@ let parse_equal =
 ;;
 
 let parse_not_equal =
-  token "!= " *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_not_equal, exp1, exp2))
+  token "!=" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_not_equal, exp1, exp2))
 ;;
 
 let parse_greater =
@@ -90,8 +90,25 @@ let parse_or = token "||" *> return (fun exp1 exp2 -> Expr_bin_oper (Bin_or, exp
 let parse_const_int = parse_int >>| fun num -> Const_int num
 
 let parse_const_string =
-  char '"' *> take_till (Char.equal '"') <* char '"' >>| fun string -> Const_string string
+  let escaped_char =
+    char '\\'
+    *> choice
+         [ char '\"' *> return '\"'
+         ; char '\\' *> return '\\'
+         ; char 'n' *> return '\n'
+         ; char 't' *> return '\t'
+         ; char 'r' *> return '\r'
+         ]
+  in
+  let string_char = escaped_char <|> satisfy (fun c -> c <> '"' && c <> '\\') in
+  char '\"' *> many string_char
+  <* char '\"'
+  >>| fun chars -> Const_string (String.of_seq (List.to_seq chars))
 ;;
+
+(* let parse_const_string =
+   char '"' *> take_till (Char.equal '"') <* char '"' >>| fun string -> Const_string string
+   ;; *)
 
 (** [parse_idents_with_types] parses {i one} or more identificators with types,
     separated by comma such as: [a int], [a int, b string], [a, b int, c, d bool] *)

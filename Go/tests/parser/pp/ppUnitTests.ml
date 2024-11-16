@@ -85,6 +85,26 @@ let%expect_test "expr const string" =
   [%expect {| "hello" |}]
 ;;
 
+let%expect_test "expr const empty string" =
+  print_endline (print_expr (Expr_const (Const_string "")));
+  [%expect {| "" |}]
+;;
+
+let%expect_test "expr const with escaped backslash" =
+  print_endline (print_expr (Expr_const (Const_string "\\")));
+  [%expect {| "\\" |}]
+;;
+
+let%expect_test "expr const with escaped quote" =
+  print_endline (print_expr (Expr_const (Const_string "\"")));
+  [%expect {| "\"" |}]
+;;
+
+let%expect_test "expr const with newline" =
+  print_endline (print_expr (Expr_const (Const_string "\n")));
+  [%expect {| "\n" |}]
+;;
+
 let%expect_test "expr const empty array" =
   print_endline (print_expr (Expr_const (Const_array (3, Type_int, []))));
   [%expect {| [3]int{} |}]
@@ -185,7 +205,7 @@ let%expect_test "expr chan receive from complex expr" =
   print_endline
     (print_expr
        (Expr_chan_receive (Expr_bin_oper (Bin_sum, Expr_ident "a", Expr_ident "b"))));
-  [%expect {| <-c |}]
+  [%expect {| <-(a + b) |}]
 ;;
 
 let%expect_test "expr multiple unary operators" =
