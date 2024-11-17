@@ -2,12 +2,12 @@
 
 (** SPDX-License-Identifier: MIT *)
 
-open AstGenerator
-open AstShrinker
 open Pprinter.Printer
 open Parse
 
-let arbitrary_file_manual = QCheck.make gen_file ~shrink:shrink_file ~print:print_file
+let arbitrary_file_manual =
+  QCheck.make AstGenerator.gen_file ~shrink:AstShrinker.shrink_file ~print:Ast.show_file
+;;
 
 let manual_test =
   QCheck.(
