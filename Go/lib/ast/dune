@@ -1,7 +1,7 @@
 (library
  (name ast)
- (libraries base)
+ (libraries base qcheck)
  (preprocess
-  (pps ppx_deriving.show))
+  (pps ppx_deriving.show ppx_deriving_qcheck))
  (instrumentation
   (backend bisect_ppx)))

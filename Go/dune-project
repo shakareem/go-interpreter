@@ -31,6 +31,7 @@
   angstrom
   qcheck
   ppx_deriving
+  ppx_deriving_qcheck
   bisect_ppx
   (odoc :with-doc)
   (ocamlformat :build)
