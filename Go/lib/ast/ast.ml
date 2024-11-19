@@ -26,12 +26,6 @@ type type' =
 (** identificator for a variable or a function *)
 type ident = string [@@deriving show { with_path = false }]
 
-(** Varinants of for with range stmt *)
-type range_variant =
-  | Decl (** Decl for with range such as [for i, elem := range array {}] *)
-  | Assign (** Assign for with range such as [for i, elem = range array {}] *)
-[@@deriving show { with_path = false }]
-
 (** Binary operators *)
 type bin_oper =
   | Bin_sum (** Binary sum: [+] *)
