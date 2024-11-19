@@ -5,30 +5,47 @@
 open QCheck.Gen
 open Ast
 
-let size5 = int_range 0 5
+let size4 = int_range 0 4
+let list4 gen = list_size size4 gen
 let gen_ident_first_char = oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_' ]
 
 let gen_ident_char =
   oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_'; char_range '0' '9' ]
 ;;
 
+let is_keyword = function
+  | "break"
+  | "func"
+  | "defer"
+  | "go"
+  | "chan"
+  | "if"
+  | "else"
+  | "continue"
+  | "for"
+  | "return"
+  | "var" -> true
+  | _ -> false
+;;
+
 let gen_ident =
   let* first_char = gen_ident_first_char in
-  let* rest_chars = string_size ~gen:gen_ident_char size5 in
-  return (Base.Char.to_string first_char ^ rest_chars)
+  let* rest_chars = string_size ~gen:gen_ident_char size4 in
+  let ident = Base.Char.to_string first_char ^ rest_chars in
+  return (if is_keyword ident then "_" ^ ident else ident)
 ;;
 
 (********** types **********)
 
 let gen_array_type gtype =
-  let* size = size5 in
+  let* size = size4 in
   let* type' = gtype in
   return (Type_array (size, type'))
 ;;
 
 let gen_func_type gtype =
-  let* arg_types = (list_size size5) gtype in
-  let* return_types = (list_size size5) gtype in
+  let* arg_types = list4 gtype in
+  let* return_types = list4 gtype in
   return (Type_func (arg_types, return_types))
 ;;
 
@@ -57,38 +74,38 @@ let gen_type =
 (********** const **********)
 
 let gen_const_int =
-  let* num = int_range 0 1000 in
+  let* num = big_nat in
   return (Const_int num)
 ;;
 
 let gen_const_string =
-  let* str = string_size ~gen:printable size5 in
+  let* str = string_size ~gen:printable size4 in
   return (Const_string str)
 ;;
 
 let gen_const_array gexpr =
-  let* size = size5 in
+  let* size = size4 in
   let* type' = gen_type in
-  let* inits = list_size size5 gexpr in
+  let* inits = list4 gexpr in
   return (Const_array (size, type', inits))
 ;;
 
 let gen_return_values =
   let gen_only_types =
     let* hd = gen_type in
-    let* tl = (list_size size5) gen_type in
+    let* tl = list4 gen_type in
     return (Only_types (hd, tl))
   in
   let gen_ident_and_types =
     let* hd = pair gen_ident gen_type in
-    let* tl = (list_size size5) (pair gen_ident gen_type) in
+    let* tl = list4 (pair gen_ident gen_type) in
     return (Ident_and_types (hd, tl))
   in
   oneof [ gen_only_types; gen_ident_and_types ]
 ;;
 
 let gen_anon_func gblock =
-  let* args = (list_size size5) (pair gen_ident gen_type) in
+  let* args = list4 (pair gen_ident gen_type) in
   let* returns = option gen_return_values in
   let* body = gblock in
   return { args; returns; body }
@@ -156,7 +173,7 @@ let gen_expr_un_oper gexpr =
 
 let gen_func_call gexpr : func_call t =
   let* func = gexpr in
-  let* args = (list_size size5) gexpr in
+  let* args = list4 gexpr in
   return (func, args)
 ;;
 
@@ -188,11 +205,11 @@ let gen_long_decl gblock =
   let* type' = gen_type in
   let* first_id = gen_ident in
   let* second_id = gen_ident in
-  let* rest_ids = list_size size5 gen_ident in
+  let* rest_ids = list4 gen_ident in
   oneof
     [ return (Long_decl_no_init (type', first_id, second_id :: rest_ids))
     ; (let* first_assign = pair gen_ident (gen_expr gblock) in
-       let* rest_assigns = list_size size5 (pair gen_ident (gen_expr gblock)) in
+       let* rest_assigns = list4 (pair gen_ident (gen_expr gblock)) in
        return (Long_decl_mult_init (Option.some type', first_assign, rest_assigns)))
     ; (let* call = gen_func_call (gen_expr gblock) in
        return
@@ -208,11 +225,11 @@ let gen_stmt_long_decl gblock =
 let gen_short_decl gblock =
   oneof
     [ (let* first_assign = pair gen_ident (gen_expr gblock) in
-       let* rest_assigns = list_size size5 (pair gen_ident (gen_expr gblock)) in
+       let* rest_assigns = list4 (pair gen_ident (gen_expr gblock)) in
        return (Short_decl_mult_init (first_assign, rest_assigns)))
     ; (let* first_id = gen_ident in
        let* second_id = gen_ident in
-       let* rest_ids = list_size size5 gen_ident in
+       let* rest_ids = list4 gen_ident in
        let* call = gen_func_call (gen_expr gblock) in
        return (Short_decl_one_init (first_id, second_id, rest_ids, call)))
     ]
@@ -241,20 +258,18 @@ let gen_assign_lvalue gblock =
 let gen_assign gblock =
   oneof
     [ (let* fisrt_assign = pair (gen_assign_lvalue gblock) (gen_expr gblock) in
-       let* rest_assigns =
-         list_size size5 (pair (gen_assign_lvalue gblock) (gen_expr gblock))
-       in
+       let* rest_assigns = list4 (pair (gen_assign_lvalue gblock) (gen_expr gblock)) in
        return (Assign_mult_expr (fisrt_assign, rest_assigns)))
     ; (let* first_lvalue = gen_assign_lvalue gblock in
        let* second_lvalue = gen_assign_lvalue gblock in
-       let* rest_lvalues = list_size size5 (gen_assign_lvalue gblock) in
+       let* rest_lvalues = list4 (gen_assign_lvalue gblock) in
        let* call = gen_func_call (gen_expr gblock) in
        return (Assign_one_expr (first_lvalue, second_lvalue, rest_lvalues, call)))
     ]
 ;;
 
 let gen_stmt_return gblock =
-  let* exprs = list_size size5 (gen_expr gblock) in
+  let* exprs = list4 (gen_expr gblock) in
   return (Stmt_return exprs)
 ;;
 
@@ -274,7 +289,7 @@ let gen_stmt_defer_go gblock =
   oneofl [ Stmt_defer call; Stmt_go call ]
 ;;
 
-let gen_block gstmt = list_size size5 gstmt
+let gen_block gstmt = list4 gstmt
 
 let gen_stmt_block gstmt =
   let* block = gen_block gstmt in

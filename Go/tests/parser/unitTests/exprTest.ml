@@ -23,11 +23,10 @@ let%expect_test "not digit in int" =
   [%expect {| : syntax error |}]
 ;;
 
-(* bug
 let%expect_test "very big int" =
-  pp print_expr pexpr {|9999999999999999999999999999999999999999|};
-  [%expect {||}]
-;; *)
+  pp print_expr parse_expr {|9999999999999999999999999999999999999999|};
+  [%expect {| : syntax error |}]
+;;
 
 let%expect_test "const string" =
   pp print_expr parse_expr {|"my_string"|};
@@ -186,6 +185,11 @@ let%expect_test "expr array with ..." =
   pp print_expr parse_expr {|[...]int{1, 2, 3, 4}|};
   [%expect {|
     [4]int{1, 2, 3, 4} |}]
+;;
+
+let%expect_test "expr const array with very big size" =
+  pp print_expr parse_expr {|[9999999999999999999999999999999]int{}|};
+  [%expect {| : syntax error |}]
 ;;
 
 (********** ident **********)

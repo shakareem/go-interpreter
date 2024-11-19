@@ -495,39 +495,3 @@ let shrink_top_decl = function
 ;;
 
 let shrink_file file = list ~shrink:shrink_top_decl file
-
-(* debug *)
-
-(* open Pprinter.Printer
-   open Parse *)
-
-(* let shrink_debug (parser : 'a Angstrom.t) (printer : 'a -> string) (shrinker : 'a -> 'a QCheck.Iter.t) (prog : 'a) =
-  let rec rec_shrinker value =
-    (shrinker value >|= (fun shrinked ->
-    if shrinked = value then shrinked else rec_shrinker shrinked))
-  in
-  match parse parser prog with
-  | Ok parsed -> (printer (rec_shrinker parsed))
-  | Error _ -> ": parse error"
-;;
-
-let%expect_test "file with factorial func" =
-  shrink_debug parse_file print_file shrink_file
-          {|
-  func fac(n int) int {
-      if n == 1 {
-          return 1  
-      } else {
-          return n * fac(n - 1)
-      }
-  }|}));
-  [%expect
-    {|
-    func fac(n int) int {
-        if n == 1 {
-            return 1
-        } else {
-            return n * fac(n - 1)
-        }
-    } |}]
-;; *)

@@ -2,6 +2,13 @@
 
 (** SPDX-License-Identifier: MIT *)
 
+(** Channel direction *)
+type chan_dir =
+  | Chan_bidirectional (** Bidirectional channel type such [chan] *)
+  | Chan_receive (** Receive-only channel type [<-chan] *)
+  | Chan_send (** Send-only channel type [chan<-] *)
+[@@deriving show { with_path = false }]
+
 (** Data types *)
 type type' =
   | Type_int (** Integer type: [int] *)
@@ -15,12 +22,6 @@ type type' =
   (** Channel type such as:
       [chan int], [<-chan string], [chan<- bool] *)
 [@@deriving show { with_path = false }]
-
-(** Channel direction *)
-and chan_dir =
-  | Chan_bidirectional (** Bidirectional channel type such as [chan int] *)
-  | Chan_receive (** Receive-only channel type such as [<-chan string] *)
-  | Chan_send (** Send-only channel type such as [chan<- bool] *)
 
 (** identificator for a variable or a function *)
 type ident = string [@@deriving show { with_path = false }]
@@ -75,9 +76,6 @@ type expr =
   | Expr_call of func_call (** See func_call type *)
 [@@deriving show { with_path = false }]
 
-(** Channel receive such as: [<-c], [<-<-get_chan()] *)
-and chan_receive = expr
-
 (** Constants, a.k.a. literals *)
 and const =
   | Const_int of int (** Integer constants such as [0], [123] *)
@@ -113,6 +111,9 @@ and anon_func =
     Empty list means that function doesn't take any arguments *)
 and func_call = expr * expr list [@@deriving show { with_path = false }]
 
+(** Channel receive such as: [<-c], [<-<-get_chan()] *)
+and chan_receive = expr [@@deriving show { with_path = false }]
+
 (** Channel send such as [c <- true] *)
 and chan_send = ident * expr [@@deriving show { with_path = false }]
 
@@ -133,6 +134,7 @@ and assign =
   (** Assignment to a variable with multiple lvalues and
       one initializer that is a function call such as
       [a, b, c[i] = get_three()] *)
+[@@deriving show { with_path = false }]
 
 (** Variable declarations with [var] keyword *)
 and long_var_decl =
@@ -181,10 +183,12 @@ and if' =
   ; if_body : block
   ; else_body : else_body option (* block or if statement or None *)
   }
+[@@deriving show { with_path = false }]
 
 and else_body =
   | Else_block of block
   | Else_if of if'
+[@@deriving show { with_path = false }]
 
 (** Statement, a syntactic unit of imperative programming *)
 and stmt =

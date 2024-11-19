@@ -22,7 +22,14 @@ let curly_braces p = char '{' *> ws *> p <* ws_line <* char '}'
 let sep_by_comma p = sep_by (token ",") p
 let sep_by_comma1 p = sep_by1 (token ",") p
 let parse_stmt_sep = ws_line *> (char '\n' <|> char ';') *> ws
-let parse_int = take_while1 Char.is_digit >>| Int.of_string
+
+let parse_int =
+  take_while1 Char.is_digit
+  >>= fun str ->
+  match int_of_string_opt str with
+  | Some num -> return num
+  | None -> fail
+;;
 
 let is_keyword = function
   | "break"
