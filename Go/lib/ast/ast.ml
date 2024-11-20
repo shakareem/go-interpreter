@@ -41,10 +41,9 @@ let gen_ident =
   in
   let* first_char = oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_' ] in
   let* rest_chars =
-    string_size
+    small_string
       ~gen:
         (oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_'; char_range '0' '9' ])
-      (int_range 0 9)
   in
   let ident = Base.Char.to_string first_char ^ rest_chars in
   return (if is_keyword ident then "_" ^ ident else ident)
@@ -77,110 +76,125 @@ type unary_oper =
 type return_values =
   | Only_types of type' * type' list
   | Ident_and_types of (ident * type') * (ident * type') list
-[@@deriving show { with_path = false }]
+[@@deriving show { with_path = false }, qcheck]
 
-type expr =
-  | Expr_const of const
-  | Expr_ident of ident
-  | Expr_index of expr * expr
-  | Expr_bin_oper of bin_oper * expr * expr
-  | Expr_un_oper of unary_oper * expr
-  | Expr_chan_receive of chan_receive
-  | Expr_call of func_call
-[@@deriving show { with_path = false }]
+type 'stmt blck = 'stmt list [@@deriving show { with_path = false }]
 
-and const =
-  | Const_int of int
-  | Const_string of string
-  | Const_array of int * type' * expr list
-  | Const_func of anon_func
-[@@deriving show { with_path = false }]
-
-and anon_func =
+type 'stmt afnc =
   { args : (ident * type') list
   ; returns : return_values option
-  ; body : block
+  ; body : 'stmt blck
   }
 [@@deriving show { with_path = false }]
 
-and func_call = expr * expr list [@@deriving show { with_path = false }]
-and chan_receive = expr [@@deriving show { with_path = false }]
-and chan_send = ident * expr [@@deriving show { with_path = false }]
+type ('exp, 'stmt) cnst =
+  | Const_int of int
+  | Const_string of string
+  | Const_array of int * type' * 'exp list
+  | Const_func of 'stmt blck afnc
+[@@deriving show { with_path = false }]
 
-and lvalue =
+type 'exp fcall = 'exp * 'exp list [@@deriving show { with_path = false }]
+type 'exp recv = 'exp [@@deriving show { with_path = false }]
+
+type 'stmt exp =
+  | Expr_const of ('stmt blck exp, 'stmt blck) cnst
+  | Expr_ident of ident
+  | Expr_index of 'stmt blck exp * 'stmt blck exp
+  | Expr_bin_oper of bin_oper * 'stmt blck exp * 'stmt blck exp
+  | Expr_un_oper of unary_oper * 'stmt blck exp
+  | Expr_recv of 'stmt blck exp recv
+  | Expr_call of 'stmt blck exp fcall
+[@@deriving show { with_path = false }]
+
+type 'exp send = ident * 'exp [@@deriving show { with_path = false }]
+
+type 'exp lvlue =
   | Lvalue_ident of ident
-  | Lvalue_array_index of lvalue * expr
+  | Lvalue_array_index of 'exp lvlue * 'exp
 [@@deriving show { with_path = false }]
 
-and assign =
-  | Assign_mult_expr of (lvalue * expr) * (lvalue * expr) list
-  | Assign_one_expr of lvalue * lvalue * lvalue list * func_call
+type 'exp asgn =
+  | Assign_mult_exp of ('exp lvlue * 'exp) * ('exp lvlue * 'exp) list
+  | Assign_one_exp of 'exp lvlue * 'exp lvlue * 'exp lvlue list * 'exp fcall
 [@@deriving show { with_path = false }]
 
-and long_var_decl =
+type 'exp ldcl =
   | Long_decl_no_init of type' * ident * ident list
-  | Long_decl_mult_init of type' option * (ident * expr) * (ident * expr) list
-  | Long_decl_one_init of type' option * ident * ident * ident list * func_call
+  | Long_decl_mult_init of type' option * (ident * 'exp) * (ident * 'exp) list
+  | Long_decl_one_init of type' option * ident * ident * ident list * 'exp fcall
 [@@deriving show { with_path = false }]
 
-and short_var_decl =
-  | Short_decl_mult_init of (ident * expr) * (ident * expr) list
-  | Short_decl_one_init of ident * ident * ident list * func_call
+type 'exp sdcl =
+  | Short_decl_mult_init of (ident * 'exp) * (ident * 'exp) list
+  | Short_decl_one_init of ident * ident * ident list * 'exp fcall
 [@@deriving show { with_path = false }]
 
-and if_for_init =
-  | Init_assign of assign
-  | Init_decl of short_var_decl
+type 'exp init =
+  | Init_asgn of 'exp asgn
+  | Init_decl of 'exp sdcl
   | Init_incr of ident
   | Init_decr of ident
-  | Init_call of func_call
-  | Init_send of chan_send
-  | Init_receive of chan_receive
+  | Init_call of 'exp fcall
+  | Init_send of 'exp send
+  | Init_receive of 'exp recv
 [@@deriving show { with_path = false }]
 
-and if' =
-  { init : if_for_init option
-  ; cond : expr
-  ; if_body : block
-  ; else_body : else_body option
+type ('stmt, 'elsb) iff =
+  { init : 'stmt blck exp init option
+  ; cond : 'stmt blck exp
+  ; if_body : 'stmt blck
+  ; elsb : 'elsb option
   }
 [@@deriving show { with_path = false }]
 
-and else_body =
-  | Else_block of block
-  | Else_if of if'
+type 'stmt elsb =
+  | Else_block of 'stmt blck
+  | Else_if of ('stmt blck, 'stmt blck elsb) iff
 [@@deriving show { with_path = false }]
 
-and stmt =
-  | Stmt_long_var_decl of long_var_decl
-  | Stmt_short_var_decl of short_var_decl
-  | Stmt_assign of assign
+type stmt =
+  | Stmt_ldcl of stmt blck exp ldcl
+  | Stmt_sdcl of stmt blck exp sdcl
+  | Stmt_asgn of stmt blck exp asgn
   | Stmt_incr of ident
   | Stmt_decr of ident
   | Stmt_break
   | Stmt_continue
-  | Stmt_return of expr list
-  | Stmt_block of block
-  | Stmt_chan_send of chan_send
-  | Stmt_chan_receive of chan_receive
-  | Stmt_call of func_call
-  | Stmt_defer of func_call
-  | Stmt_go of func_call
-  | Stmt_if of if'
+  | Stmt_return of stmt blck exp list
+  | Stmt_block of stmt blck
+  | Stmt_send of stmt blck exp send
+  | Stmt_recv of stmt blck exp recv
+  | Stmt_call of stmt blck exp fcall
+  | Stmt_defer of stmt blck exp fcall
+  | Stmt_go of stmt blck exp fcall
+  | Stmt_if of (stmt blck, stmt blck elsb) iff
   | Stmt_for of
-      { init : if_for_init option
-      ; cond : expr option
-      ; post : if_for_init option
-      ; body : block
+      { init : stmt blck exp init option
+      ; cond : stmt blck exp option
+      ; post : stmt blck exp init option
+      ; body : stmt blck
       }
 [@@deriving show { with_path = false }]
 
-and block = stmt list [@@deriving show { with_path = false }]
-
-type func_decl = ident * anon_func [@@deriving show { with_path = false }]
+type block = stmt blck [@@deriving show { with_path = false }]
+type anon_func = stmt afnc [@@deriving show { with_path = false }]
+type expr = stmt exp [@@deriving show { with_path = false }]
+type const = (expr, stmt) cnst [@@deriving show { with_path = false }]
+type func_call = expr fcall [@@deriving show { with_path = false }]
+type chan_receive = expr recv [@@deriving show { with_path = false }]
+type chan_send = expr send [@@deriving show { with_path = false }]
+type lvalue = expr lvlue [@@deriving show { with_path = false }]
+type assign = expr asgn [@@deriving show { with_path = false }]
+type long_var_decl = expr ldcl [@@deriving show { with_path = false }]
+type short_var_decl = expr sdcl [@@deriving show { with_path = false }]
+type if_for_init = expr init [@@deriving show { with_path = false }]
+type else_body = stmt elsb [@@deriving show { with_path = false }]
+type if' = (stmt, else_body) iff [@@deriving show { with_path = false }]
+type func_decl = ident * block afnc [@@deriving show { with_path = false }]
 
 type top_decl =
-  | Decl_var of long_var_decl
+  | Decl_var of block exp ldcl
   | Decl_func of func_decl
 [@@deriving show { with_path = false }]
 
