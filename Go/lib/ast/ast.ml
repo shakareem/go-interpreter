@@ -103,7 +103,7 @@ type 'stmt exp =
   | Expr_index of 'stmt blck exp * 'stmt blck exp
   | Expr_bin_oper of bin_oper * 'stmt blck exp * 'stmt blck exp
   | Expr_un_oper of unary_oper * 'stmt blck exp
-  | Expr_recv of 'stmt blck exp recv
+  | Expr_chan_receive of 'stmt blck exp recv
   | Expr_call of 'stmt blck exp fcall
 [@@deriving show { with_path = false }]
 
@@ -131,7 +131,7 @@ type 'exp sdcl =
 [@@deriving show { with_path = false }]
 
 type 'exp init =
-  | Init_asgn of 'exp asgn
+  | Init_assign of 'exp asgn
   | Init_decl of 'exp sdcl
   | Init_incr of ident
   | Init_decr of ident
@@ -154,17 +154,17 @@ type 'stmt elsb =
 [@@deriving show { with_path = false }]
 
 type stmt =
-  | Stmt_ldcl of stmt blck exp ldcl
-  | Stmt_sdcl of stmt blck exp sdcl
-  | Stmt_asgn of stmt blck exp asgn
+  | Stmt_long_var_decl of stmt blck exp ldcl
+  | Stmt_short_var_decl of stmt blck exp sdcl
+  | Stmt_assign of stmt blck exp asgn
   | Stmt_incr of ident
   | Stmt_decr of ident
   | Stmt_break
   | Stmt_continue
   | Stmt_return of stmt blck exp list
   | Stmt_block of stmt blck
-  | Stmt_send of stmt blck exp send
-  | Stmt_recv of stmt blck exp recv
+  | Stmt_chan_send of stmt blck exp send
+  | Stmt_chan_receive of stmt blck exp recv
   | Stmt_call of stmt blck exp fcall
   | Stmt_defer of stmt blck exp fcall
   | Stmt_go of stmt blck exp fcall
