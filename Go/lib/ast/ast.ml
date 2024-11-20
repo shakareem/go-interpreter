@@ -2,200 +2,233 @@
 
 (** SPDX-License-Identifier: MIT *)
 
-open QCheck.Gen
-
-let sized4 st = sized_size (int_range 0 4) st
-
+(** Channel direction *)
 type chan_dir =
-  | Chan_bidirectional
-  | Chan_receive
-  | Chan_send
-[@@deriving show { with_path = false }, qcheck]
+  | Chan_bidirectional (** Bidirectional channel type such [chan] *)
+  | Chan_receive (** Receive-only channel type [<-chan] *)
+  | Chan_send (** Send-only channel type [chan<-] *)
+[@@deriving show { with_path = false }]
 
+(** Data types *)
 type type' =
-  | Type_int
-  | Type_string
-  | Type_bool
-  | Type_array of int * type'
+  | Type_int (** Integer type: [int] *)
+  | Type_string (** String type: [string] *)
+  | Type_bool (** Boolean type: [bool] *)
+  | Type_array of int * type' (** Array types such as [[6]int], [[0]string] *)
   | Type_func of type' list * type' list
+  (** Function types such as [func()], [func(string) (bool, int)].
+      Empty lists mean that there is no arguments or return values *)
   | Type_chan of chan_dir * type'
-[@@deriving show { with_path = false }, qcheck]
+  (** Channel type such as:
+      [chan int], [<-chan string], [chan<- bool] *)
+[@@deriving show { with_path = false }]
 
-let gen_type' = sized4 gen_type'_sized
+type ident = string [@@deriving show { with_path = false }]
 
-let gen_ident =
-  let open QCheck.Gen in
-  let is_keyword = function
-    | "break"
-    | "func"
-    | "defer"
-    | "go"
-    | "chan"
-    | "if"
-    | "else"
-    | "continue"
-    | "for"
-    | "return"
-    | "var" -> true
-    | _ -> false
-  in
-  let* first_char = oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_' ] in
-  let* rest_chars =
-    small_string
-      ~gen:
-        (oneof [ char_range 'a' 'z'; char_range 'A' 'Z'; return '_'; char_range '0' '9' ])
-  in
-  let ident = Base.Char.to_string first_char ^ rest_chars in
-  return (if is_keyword ident then "_" ^ ident else ident)
-;;
-
-type ident = (string[@gen gen_ident]) [@@deriving show { with_path = false }]
-
+(** Binary operators *)
 type bin_oper =
-  | Bin_sum
-  | Bin_multiply
-  | Bin_subtract
-  | Bin_divide
-  | Bin_modulus
-  | Bin_equal
-  | Bin_not_equal
-  | Bin_greater
-  | Bin_greater_equal
-  | Bin_less
-  | Bin_less_equal
-  | Bin_and
-  | Bin_or
-[@@deriving show { with_path = false }, qcheck]
+  | Bin_sum (** Binary sum: [+] *)
+  | Bin_multiply (** Binary multiplication: [*] *)
+  | Bin_subtract (** Binary subtraction: [-] *)
+  | Bin_divide (** Binary divison: [/] *)
+  | Bin_modulus (** Binary division by modulus: [%] *)
+  | Bin_equal (** Binary check for equality: [==] *)
+  | Bin_not_equal (** Binary check for inequlity: [!=] *)
+  | Bin_greater (** Binary "greater than": [>] *)
+  | Bin_greater_equal (** Binary "greater than or equal": [>=] *)
+  | Bin_less (** Binary "less than": [<] *)
+  | Bin_less_equal (** Binary "less than or equal": [<=] *)
+  | Bin_and (** Binary "and": [&&] *)
+  | Bin_or (** Binary "or": [||] *)
+[@@deriving show { with_path = false }]
 
+(** Unary operators *)
 type unary_oper =
-  | Unary_not
-  | Unary_plus
-  | Unary_minus
-[@@deriving show { with_path = false }, qcheck]
+  | Unary_not (** Unary negation: [!] *)
+  | Unary_plus (** Unary plus: [+] *)
+  | Unary_minus (** Unary minus: [-]*)
+[@@deriving show { with_path = false }]
 
 type return_values =
-  | Only_types of type' * type' list
+  | Only_types of type' * type' list (** i.e.  [(int, bool, string)], [int]*)
   | Ident_and_types of (ident * type') * (ident * type') list
-[@@deriving show { with_path = false }, qcheck]
+  (** i.e.  [(a int, b string)], [(a , b int, c string)].
+      The second example will be processed at parsing as [(a int, b int, c string)] *)
+[@@deriving show { with_path = false }]
 
-type 'stmt blck = 'stmt list [@@deriving show { with_path = false }]
+(** Expressions that can be assigned to a variable or put in "if" statement *)
+type expr =
+  | Expr_const of const (** Constants such as [5], ["hi"], [func()] *)
+  | Expr_ident of ident (** An identificator for a variable such as [x] *)
+  | Expr_index of expr * expr
+  (** An access to an array element by its index such as: [my_array[i]], [get_array(1)[0]]*)
+  | Expr_bin_oper of bin_oper * expr * expr
+  (** Binary operations such as [a + b], [x || y] *)
+  | Expr_un_oper of unary_oper * expr (** Unary operations such as [!z], [-f] *)
+  | Expr_chan_receive of chan_receive (** See chan_receive type *)
+  | Expr_call of func_call (** See func_call type *)
+[@@deriving show { with_path = false }]
 
-type 'stmt afnc =
+(** Constants, a.k.a. literals *)
+and const =
+  | Const_int of int (** Integer constants such as [0], [123] *)
+  | Const_string of string (** Constant strings such as ["my_string"] *)
+  | Const_array of int * type' * expr list
+  (** Const arrays such as [[3]int{3, get()}].
+      Empty list means that there is no initializers. *)
+  | Const_func of anon_func (** See anon_func type *)
+[@@deriving show { with_path = false }]
+
+(** An anonymous functions such as:
+    [func() {}],
+    [func(a, b int) (sum int) { sum = a + b; return }]
+    [func(s1 string, s2 string) [2]string { return [2]string{s1,s2} }] *)
+and anon_func =
   { args : (ident * type') list
+  (** Function arguments constructions such as:
+      [func(a int, b string) ...],
+      [func(a, b int, c string) ...].
+      Empty list means that function doesn't take any arguments.
+      The second example will be processed at parsing
+      as [func(a int, b int, c string) ...] *)
   ; returns : return_values option
-  ; body : 'stmt blck
+  (** None if function doesn't return anything. See return_values type *)
+  ; body : block (** function body *)
   }
 [@@deriving show { with_path = false }]
 
-type ('exp, 'stmt) cnst =
-  | Const_int of int
-  | Const_string of string
-  | Const_array of int * type' * 'exp list
-  | Const_func of 'stmt blck afnc
+(** function calls such as:
+    [my_func(arg1, arg2)],
+    [c()()()],
+    [func() { println("hello") }()].
+    Empty list means that function doesn't take any arguments *)
+and func_call = expr * expr list [@@deriving show { with_path = false }]
+
+(** Channel receive such as: [<-c], [<-<-get_chan()] *)
+and chan_receive = expr [@@deriving show { with_path = false }]
+
+(** Channel send such as [c <- true] *)
+and chan_send = ident * expr [@@deriving show { with_path = false }]
+
+(** Lvalue in assignments *)
+and lvalue =
+  | Lvalue_ident of ident (** Lvalue of ident such as [my_var] *)
+  | Lvalue_array_index of lvalue * expr
+  (** Lvalue of array and index such as:
+      [array[get_index()]], [array[i][j][k]] *)
 [@@deriving show { with_path = false }]
 
-type 'exp fcall = 'exp * 'exp list [@@deriving show { with_path = false }]
-type 'exp recv = 'exp [@@deriving show { with_path = false }]
-
-type 'stmt exp =
-  | Expr_const of ('stmt blck exp, 'stmt blck) cnst
-  | Expr_ident of ident
-  | Expr_index of 'stmt blck exp * 'stmt blck exp
-  | Expr_bin_oper of bin_oper * 'stmt blck exp * 'stmt blck exp
-  | Expr_un_oper of unary_oper * 'stmt blck exp
-  | Expr_chan_receive of 'stmt blck exp recv
-  | Expr_call of 'stmt blck exp fcall
+(** Variable assignments *)
+and assign =
+  | Assign_mult_expr of (lvalue * expr) * (lvalue * expr) list
+  (** Assignment to a variable with equal number of identifiers and initializers
+      such as [a = 3], [a, b[0] = 4, 5]. *)
+  | Assign_one_expr of lvalue * lvalue * lvalue list * func_call
+  (** Assignment to a variable with multiple lvalues and
+      one initializer that is a function call such as
+      [a, b, c[i] = get_three()] *)
 [@@deriving show { with_path = false }]
 
-type 'exp send = ident * 'exp [@@deriving show { with_path = false }]
-
-type 'exp lvlue =
-  | Lvalue_ident of ident
-  | Lvalue_array_index of 'exp lvlue * 'exp
-[@@deriving show { with_path = false }]
-
-type 'exp asgn =
-  | Assign_mult_exp of ('exp lvlue * 'exp) * ('exp lvlue * 'exp) list
-  | Assign_one_exp of 'exp lvlue * 'exp lvlue * 'exp lvlue list * 'exp fcall
-[@@deriving show { with_path = false }]
-
-type 'exp ldcl =
+(** Variable declarations with [var] keyword *)
+and long_var_decl =
   | Long_decl_no_init of type' * ident * ident list
-  | Long_decl_mult_init of type' option * (ident * 'exp) * (ident * 'exp) list
-  | Long_decl_one_init of type' option * ident * ident * ident list * 'exp fcall
+  (** Declarations without initialization such as [var my_int1, my_int2 int] *)
+  | Long_decl_mult_init of type' option * (ident * expr) * (ident * expr) list
+  (** Declarations with initializer for each identifier such as:
+      [var my_func func() = func() {}],
+      [var a, b int = 1, 2],
+      [var a, b = 1 + 2, "3"] *)
+  | Long_decl_one_init of type' option * ident * ident * ident list * func_call
+  (** Declarations with one initializer that is a function call
+      for multiple identifiers such as [var a, b, c = get_three()] *)
 [@@deriving show { with_path = false }]
 
-type 'exp sdcl =
-  | Short_decl_mult_init of (ident * 'exp) * (ident * 'exp) list
-  | Short_decl_one_init of ident * ident * ident list * 'exp fcall
+(** Short variable declarations withous [var] keyword
+    such as [flag, count := true, 0], [a, b := get_two()]. *)
+and short_var_decl =
+  | Short_decl_mult_init of (ident * expr) * (ident * expr) list
+  (** Declarations with initializer for each identifier such as [flag, count := true, 0] *)
+  | Short_decl_one_init of ident * ident * ident list * func_call
+  (** Declarations with one initializer that is a function call
+      for multiple identifiers such as [a, b := get_two()] *)
 [@@deriving show { with_path = false }]
 
-type 'exp init =
-  | Init_assign of 'exp asgn
-  | Init_decl of 'exp sdcl
-  | Init_incr of ident
-  | Init_decr of ident
-  | Init_call of 'exp fcall
-  | Init_send of 'exp send
-  | Init_receive of 'exp recv
+(** Statements that can be used in if init and for init and post *)
+and if_for_init =
+  | Init_assign of assign (** [a = 0] *)
+  | Init_decl of short_var_decl (** [a := 0] *)
+  | Init_incr of ident (** [a++] *)
+  | Init_decr of ident (** [a--] *)
+  | Init_call of func_call (** [a()] *)
+  | Init_send of chan_send (** [c <- 1] *)
+  | Init_receive of chan_receive (** [<-c] *)
 [@@deriving show { with_path = false }]
 
-type ('stmt, 'elsb) iff =
-  { init : 'stmt blck exp init option
-  ; cond : 'stmt blck exp
-  ; if_body : 'stmt blck
-  ; elsb : 'elsb option
+(** An if statement such as:
+    [if a := 5; a >= 4 {
+          do()
+      } else {
+          do_else()
+      }] *)
+and if' =
+  { init : if_for_init option
+  ; cond : expr
+  ; if_body : block
+  ; else_body : else_body option (* block or if statement or None *)
   }
 [@@deriving show { with_path = false }]
 
-type 'stmt elsb =
-  | Else_block of 'stmt blck
-  | Else_if of ('stmt blck, 'stmt blck elsb) iff
+(** Variants of else body in if statement *)
+and else_body =
+  | Else_block of block (** Else body of statement block such as [else {}] *)
+  | Else_if of if' (** Else body of another if statement such as [else if true {}] *)
 [@@deriving show { with_path = false }]
 
-type stmt =
-  | Stmt_long_var_decl of stmt blck exp ldcl
-  | Stmt_short_var_decl of stmt blck exp sdcl
-  | Stmt_assign of stmt blck exp asgn
-  | Stmt_incr of ident
-  | Stmt_decr of ident
-  | Stmt_break
-  | Stmt_continue
-  | Stmt_return of stmt blck exp list
-  | Stmt_block of stmt blck
-  | Stmt_chan_send of stmt blck exp send
-  | Stmt_chan_receive of stmt blck exp recv
-  | Stmt_call of stmt blck exp fcall
-  | Stmt_defer of stmt blck exp fcall
-  | Stmt_go of stmt blck exp fcall
-  | Stmt_if of (stmt blck, stmt blck elsb) iff
+(** Statement, a syntactic unit of imperative programming *)
+and stmt =
+  | Stmt_long_var_decl of long_var_decl (** See long_var_decl type *)
+  | Stmt_short_var_decl of short_var_decl (** See short_var_decl type *)
+  | Stmt_assign of assign (** See assign type *)
+  | Stmt_incr of ident (** An increment of a variable: [a++] *)
+  | Stmt_decr of ident (** A decrement of a variable: [a--] *)
+  | Stmt_break (** Break statement: [break] *)
+  | Stmt_continue (** Continue statement: [continue] *)
+  | Stmt_return of expr list
+  (** Return statement such as
+      [return], [return some_expr], [return expr1, expr2] *)
+  | Stmt_block of block (** See block type *)
+  | Stmt_chan_send of chan_send (** Channel send statement such as [c <- true] *)
+  | Stmt_chan_receive of chan_receive (** See chan_receive type *)
+  | Stmt_call of func_call (** See func_call type *)
+  | Stmt_defer of func_call (** Defer statement such as [defer clean()] *)
+  | Stmt_go of func_call (** Go statement such as [go call()] *)
+  | Stmt_if of if' (** If statement, see if' type *)
   | Stmt_for of
-      { init : stmt blck exp init option
-      ; cond : stmt blck exp option
-      ; post : stmt blck exp init option
-      ; body : stmt blck
-      }
+      { init : if_for_init option
+      ; cond : expr option
+      ; post : if_for_init option
+      ; body : block
+      } (** A for statement such as [for i := 0; i < n; i++ { do() }] *)
 [@@deriving show { with_path = false }]
 
-type block = stmt blck [@@deriving show { with_path = false }]
-type anon_func = stmt afnc [@@deriving show { with_path = false }]
-type expr = stmt exp [@@deriving show { with_path = false }]
-type const = (expr, stmt) cnst [@@deriving show { with_path = false }]
-type func_call = expr fcall [@@deriving show { with_path = false }]
-type chan_receive = expr recv [@@deriving show { with_path = false }]
-type chan_send = expr send [@@deriving show { with_path = false }]
-type lvalue = expr lvlue [@@deriving show { with_path = false }]
-type assign = expr asgn [@@deriving show { with_path = false }]
-type long_var_decl = expr ldcl [@@deriving show { with_path = false }]
-type short_var_decl = expr sdcl [@@deriving show { with_path = false }]
-type if_for_init = expr init [@@deriving show { with_path = false }]
-type else_body = stmt elsb [@@deriving show { with_path = false }]
-type if' = (stmt, else_body) iff [@@deriving show { with_path = false }]
-type func_decl = ident * block afnc [@@deriving show { with_path = false }]
+(** Block of statements in curly braces *)
+and block = stmt list [@@deriving show { with_path = false }]
 
+(** Function declarations such as:
+    [func sum_and_diff(a, b int) (sum, diff int) {
+      sum = a + b
+      diff = a - b
+      return
+    }] *)
+type func_decl = ident * anon_func [@@deriving show { with_path = false }]
+
+(** Top-level declarations *)
 type top_decl =
-  | Decl_var of block exp ldcl
+  | Decl_var of long_var_decl
+  (** Top level variable declaration such as: [var a int], [var a, b = 1, "hi"] *)
   | Decl_func of func_decl
+  (** Top level function declaration such as: [func f() {}], [func f(a, b int) string {}] *)
 [@@deriving show { with_path = false }]
 
+(** The whole interpreted file, the root of the abstract syntax tree *)
 type file = top_decl list [@@deriving show { with_path = false }]
