@@ -130,12 +130,28 @@ module TypeCheckMonad = struct
     | Short_decl_one_init (x, y, z, _) -> x :: y :: z
   ;;
 
+  let seek_ident ident =
+    read_global_ident ident
+    >>= function
+    | Some _ -> return ()
+    | None ->
+      read_local_ident ident
+      >>= (function
+       | Some _ -> return ()
+       | None ->
+         fail
+           (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
+  ;;
+
   let check_afunc ident stmt =
     match stmt with
     | Stmt_long_var_decl x ->
       iter (save_local_ident ident) (retrieve_idents_from_long_var_decl x)
     | Stmt_short_var_decl x ->
       iter (save_local_ident ident) (retrieve_idents_from_short_var_decl x)
+    | Stmt_incr x -> seek_ident x
+    | Stmt_decr x -> seek_ident x
+    | Stmt_call (Expr_ident x, _) -> seek_ident x
     | _ -> return ()
   ;;
 
@@ -168,6 +184,9 @@ let pp ast =
        prerr_string "Multiple declaration error: ";
        prerr_string x
      | TypeCheckError (Incorrect_main x) ->
+       prerr_endline "ERROR";
+       prerr_string x
+     | TypeCheckError (Undefined_ident x) ->
        prerr_endline "ERROR";
        prerr_string x)
 ;;
@@ -240,7 +259,7 @@ let%expect_test "correct declarations #1" =
     CORRECT |}]
 ;;
 
-let%expect_test "correct declaration s #2" =
+let%expect_test "correct declarations #2" =
   pp
     [ Decl_var
         (Long_decl_one_init
@@ -259,6 +278,38 @@ let%expect_test "correct declaration s #2" =
           } )
     ; Decl_func
         ( "foo2"
+        , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
+          ; returns = Some (Only_types (Type_bool, []))
+          ; body = []
+          } )
+    ];
+  [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "undefined var inc" =
+  pp
+    [ Decl_var (Long_decl_no_init (Type_int, "x", []))
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
+    ; Decl_func
+        ( "foo"
+        , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
+          ; returns = Some (Only_types (Type_bool, []))
+          ; body = [ Stmt_incr "a2" ]
+          } )
+    ];
+  [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "undefined func call" =
+  pp
+    [ Decl_var (Long_decl_no_init (Type_int, "x", []))
+    ; Decl_func
+        ( "main"
+        , { args = []; returns = None; body = [ Stmt_call (Expr_ident "foo2", []) ] } )
+    ; Decl_func
+        ( "foo"
         , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
           ; returns = Some (Only_types (Type_bool, []))
           ; body = []
