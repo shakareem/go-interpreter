@@ -904,3 +904,25 @@ let%expect_test "file with factorial func" =
         }
     } |}]
 ;;
+
+let%expect_test "file with factorial func" =
+  print_endline
+    (print_file
+       [ Decl_func
+           ( "main"
+           , { args = [ "a2", Type_int ]
+             ; returns = Some (Only_types (Type_bool, []))
+             ; body = []
+             } )
+       ; Decl_func
+           ( "main1"
+           , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
+             ; returns = Some (Only_types (Type_bool, []))
+             ; body = []
+             } )
+       ]);
+  [%expect {|
+    func main(a2 int) bool {}
+
+    func main1(a1 int, c int, b int) bool {} |}]
+;;
