@@ -6,6 +6,8 @@ open Ast
 
 type type_check_error =
   | Check_failed
+  | Not_found
+  | Incorrect_main of ident
   | Multiple_declaration of ident
   | Undefined_ident of ident
   | Mismatched_types of type' * type'

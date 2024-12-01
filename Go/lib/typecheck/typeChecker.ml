@@ -84,6 +84,37 @@ module TypeCheckMonad = struct
      ;;
   *)
 
+  let find_func name code =
+    let func_name = function
+      | Decl_func (func_name, _) -> func_name
+      | Decl_var _ -> ""
+    in
+    Stdlib.List.find_opt (fun func -> String.equal (func_name func) name) code
+  ;;
+
+  let check_main code =
+    let tc = function
+      | Some (Decl_func (_, x)) ->
+        if List.length x.args > 0
+        then
+          fail
+            (TypeCheckError
+               (Incorrect_main
+                  (Printf.sprintf "func main must have no arguments and no return values")))
+        else (
+          match x.returns with
+          | Some _ ->
+            fail
+              (TypeCheckError
+                 (Incorrect_main
+                    (Printf.sprintf
+                       "func main must have no arguments and no return values")))
+          | None -> return ())
+      | _ -> fail (TypeCheckError (Incorrect_main (Printf.sprintf "main not found")))
+    in
+    tc (find_func "main" code)
+  ;;
+
   let retrieve_idents_from_pair args = List.map (fun (x, _) -> x) args
 
   let retrieve_idents_from_long_var_decl decl =
@@ -121,7 +152,9 @@ module TypeCheckMonad = struct
     | Decl_var x -> iter save_global_ident (retrieve_idents_from_long_var_decl x)
   ;;
 
-  let type_check code = run (iter check_top_decl code) (MapIdent.empty, MapIdent.empty)
+  let type_check code =
+    run (check_main code *> iter check_top_decl code) (MapIdent.empty, MapIdent.empty)
+  ;;
 end
 
 let pp ast =
@@ -134,25 +167,15 @@ let pp ast =
      | TypeCheckError (Multiple_declaration x) ->
        prerr_string "Multiple declaration error: ";
        prerr_string x
-     | TypeCheckError (Undefined_ident x) ->
+     | TypeCheckError (Incorrect_main x) ->
        prerr_endline "ERROR";
        prerr_string x)
 ;;
 
 let%expect_test "multiple func declaration" =
   pp
-    [ Decl_func
-        ( "main"
-        , { args = [ "a2", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
-          ; body = []
-          } )
-    ; Decl_func
-        ( "main"
-        , { args = [ "a1", Type_int; "a", Type_int; "b", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
-          ; body = []
-          } )
+    [ Decl_func ("main", { args = []; returns = None; body = [] })
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
     ];
   [%expect
     {|
@@ -161,12 +184,7 @@ let%expect_test "multiple func declaration" =
 
 let%expect_test "multiple declaration via args" =
   pp
-    [ Decl_func
-        ( "main"
-        , { args = [ "a2", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
-          ; body = []
-          } )
+    [ Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
         ( "foo"
         , { args = [ "a", Type_int; "a", Type_int; "b", Type_int ]
@@ -189,12 +207,7 @@ let%expect_test "multiple declaration in global space" =
            , [ "c" ]
            , (Expr_ident "get", []) ))
     ; Decl_var (Long_decl_no_init (Type_int, "x", []))
-    ; Decl_func
-        ( "main"
-        , { args = [ "a2", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
-          ; body = []
-          } )
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
         ( "foo"
         , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
@@ -209,12 +222,7 @@ let%expect_test "multiple declaration in global space" =
 
 let%expect_test "correct declarations #1" =
   pp
-    [ Decl_func
-        ( "main"
-        , { args = [ "a2", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
-          ; body = []
-          } )
+    [ Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
         ( "foo"
         , { args = [ "a", Type_int; "b", Type_int; "c", Type_int ]
@@ -229,10 +237,10 @@ let%expect_test "correct declarations #1" =
           } )
     ];
   [%expect {|
-    TEST PASSED |}]
+    CORRECT |}]
 ;;
 
-let%expect_test "correct declarations #2" =
+let%expect_test "correct declaration s #2" =
   pp
     [ Decl_var
         (Long_decl_one_init
@@ -242,21 +250,22 @@ let%expect_test "correct declarations #2" =
            , [ "c" ]
            , (Expr_ident "get", []) ))
     ; Decl_var (Long_decl_no_init (Type_int, "x", []))
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
-        ( "main"
-        , { args = [ "a2", Type_int ]
+        ( "foo1"
+        , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
           ; returns = Some (Only_types (Type_bool, []))
           ; body = []
           } )
     ; Decl_func
-        ( "main1"
+        ( "foo2"
         , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
           ; returns = Some (Only_types (Type_bool, []))
           ; body = []
           } )
     ];
   [%expect {|
-    TEST PASSED |}]
+    CORRECT |}]
 ;;
 
 let%expect_test "multiple declarations in func body with args" =
@@ -270,24 +279,19 @@ let%expect_test "multiple declarations in func body with args" =
            , (Expr_ident "get", []) ))
     ; Decl_var (Long_decl_no_init (Type_int, "x", []))
     ; Decl_func
-        ( "main"
+        ( "foo"
         , { args = [ "a2", Type_int ]
           ; returns = Some (Only_types (Type_bool, []))
           ; body = [ Stmt_long_var_decl (Long_decl_no_init (Type_int, "a2", [])) ]
           } )
-    ; Decl_func
-        ( "main1"
-        , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
-          ; body = []
-          } )
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a2 is redeclared in main |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a2 is redeclared in foo |}]
 ;;
 
-let%expect_test "multiple declarations in func body " =
+let%expect_test "main with returns and args" =
   pp
     [ Decl_var
         (Long_decl_one_init
@@ -301,10 +305,7 @@ let%expect_test "multiple declarations in func body " =
         ( "main"
         , { args = [ "a", Type_int ]
           ; returns = Some (Only_types (Type_bool, []))
-          ; body =
-              [ Stmt_long_var_decl (Long_decl_no_init (Type_int, "t1", []))
-              ; Stmt_long_var_decl (Long_decl_no_init (Type_int, "t1", []))
-              ]
+          ; body = []
           } )
     ; Decl_func
         ( "main1"
@@ -315,5 +316,6 @@ let%expect_test "multiple declarations in func body " =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a2 is redeclared in main |}]
+    ERROR WHILE TYPECHECK WITH ERROR
+    func main must have no arguments and no return values |}]
 ;;
