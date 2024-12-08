@@ -10,7 +10,7 @@ type type_check_error =
   | Incorrect_main of ident
   | Multiple_declaration of ident
   | Undefined_ident of ident
-  | Mismatched_types of type' * type'
+  | Mismatched_types of ident
   | Unexpected_arguments of ident
   | Missing_argument of type'
   | Index_out_of_bounds of int

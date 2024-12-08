@@ -912,18 +912,13 @@ let%expect_test "file with factorial func" =
            (Long_decl_one_init
               ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
               , "a"
-              , "b"
+              , "foo"
               , [ "c" ]
               , (Expr_ident "get", []) ))
        ; Decl_var (Long_decl_no_init (Type_int, "x", []))
+       ; Decl_func ("main", { args = []; returns = None; body = [] })
        ; Decl_func
-           ( "main"
-           , { args = [ "a2", Type_int ]
-             ; returns = Some (Only_types (Type_bool, []))
-             ; body = [ Stmt_long_var_decl (Long_decl_no_init (Type_int, "x", [])) ]
-             } )
-       ; Decl_func
-           ( "main1"
+           ( "foo"
            , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
              ; returns = Some (Only_types (Type_bool, []))
              ; body = []
@@ -931,13 +926,11 @@ let%expect_test "file with factorial func" =
        ]);
   [%expect
     {|
-    var a, b, c <-chan [5]int = get()
+    var a, foo, c <-chan [5]int = get()
 
     var x int
 
-    func main(a2 int) bool {
-        var x int
-    }
+    func main() {}
 
-    func main1(a1 int, c int, b int) bool {} |}]
+    func foo(a1 int, c int, b int) bool {} |}]
 ;;

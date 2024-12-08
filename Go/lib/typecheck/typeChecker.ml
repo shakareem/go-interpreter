@@ -4,13 +4,82 @@ open TypeCheckErrors
 module TypeCheckMonad = struct
   open TypeCheckErrors
   open Ast
+  open Format
   include BaseMonad
 
   type 'a t = (type_check, 'a) BaseMonad.t
 
+  type env_t =
+    | Loc
+    | Glob
+
+  let concat = String.concat ""
+
+  let sep_by sep list print =
+    let rec helper acc = function
+      | fst :: snd :: tl ->
+        let acc = concat [ acc; print fst; sep ] in
+        helper acc (snd :: tl)
+      | fst :: _ -> acc ^ print fst
+      | [] -> acc
+    in
+    helper "" list
+  ;;
+
+  let sep_by_comma list print = sep_by ", " list print
+
+  let rec print_type = function
+    | Type_int -> "int"
+    | Type_string -> "string"
+    | Type_bool -> "bool"
+    | Type_array (size, type') -> asprintf "[%i]%s" size (print_type type')
+    | Type_func (arg_types, return_types) ->
+      let print_returns =
+        match return_types with
+        | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma return_types print_type)
+        | type' :: _ -> " " ^ print_type type'
+        | [] -> ""
+      in
+      asprintf "func(%s)%s" (sep_by_comma arg_types print_type) print_returns
+    | Type_chan (chan_dir, t) ->
+      let print_chan_dir =
+        match chan_dir with
+        | Chan_bidirectional -> "chan"
+        | Chan_receive -> "<-chan"
+        | Chan_send -> "chan<-"
+      in
+      let print_type =
+        match t with
+        | Type_chan (Chan_receive, _) -> asprintf "(%s)" (print_type t)
+        | _ -> asprintf "%s" (print_type t)
+      in
+      asprintf "%s %s" print_chan_dir print_type
+  ;;
+
+  let retrieve_paris_first args = List.map (fun (x, _) -> x) args
+  let retrieve_paris_second args = List.map (fun (_, x) -> x) args
+
   let return_with_fail = function
     | Some x -> return x
     | None -> fail (TypeCheckError Check_failed)
+  ;;
+
+  let retrieve_anon_func x =
+    let args = retrieve_paris_second x.args in
+    match x.returns with
+    | Some x ->
+      (match x with
+       | Only_types (x, y) -> Type_func (args, x :: y)
+       | Ident_and_types (x, y) -> Type_func (args, retrieve_paris_second (x :: y)))
+    | None -> Type_func (args, [])
+  ;;
+
+  let retrieve_type_const x =
+    match x with
+    | Const_array (x, y, _) -> return (Type_array (x, y))
+    | Const_int _ -> return Type_int
+    | Const_string _ -> return Type_string
+    | Const_func x -> return (retrieve_anon_func x)
   ;;
 
   let read_local : 'a MapIdent.t t =
@@ -60,18 +129,41 @@ module TypeCheckMonad = struct
     | Some _ ->
       fail
         (TypeCheckError
-           (Multiple_declaration (Printf.sprintf "%s is redeclared in %s" ident env)))
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" ident (print_type env))))
   ;;
 
-  let save_global_ident ident =
-    read_global_ident ident
+  let save_local_ident_2 env ident =
+    read_local_ident env
     >>= function
-    | None -> write_global_ident "Global Scope" ident
+    | None -> write_local_ident ident env
     | Some _ ->
       fail
         (TypeCheckError
            (Multiple_declaration
-              (Printf.sprintf "%s is redeclared in %s" ident "Global Scope")))
+              (Printf.sprintf "%s is redeclared in %s" env (print_type ident))))
+  ;;
+
+  let save_global_ident ident t =
+    read_global_ident t
+    >>= function
+    | None -> write_global_ident ident t
+    | Some _ ->
+      fail
+        (TypeCheckError
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" t (print_type ident))))
+  ;;
+
+  let save_global_ident_2 ident t =
+    read_global_ident ident
+    >>= function
+    | None -> write_global_ident t ident
+    | Some _ ->
+      fail
+        (TypeCheckError
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" ident (print_type t))))
   ;;
 
   (*
@@ -83,6 +175,18 @@ module TypeCheckMonad = struct
      Stdlib.List.find_opt (fun func -> String.equal (func_name func) ident) func_list
      ;;
   *)
+  let read_ident ident =
+    read_global_ident ident
+    >>= function
+    | Some x -> return x
+    | None ->
+      read_local_ident ident
+      >>= (function
+       | Some x -> return x
+       | None ->
+         fail
+           (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
+  ;;
 
   let find_func name code =
     let func_name = function
@@ -115,20 +219,76 @@ module TypeCheckMonad = struct
     tc (find_func "main" code)
   ;;
 
-  let retrieve_paris_first args = List.map (fun (x, _) -> x) args
-  let retrieve_paris_second args = List.map (fun (_, x) -> x) args
+  let rec retrieve_type_expr x =
+    match x with
+    | Expr_const x -> retrieve_type_const x
+    | Expr_un_oper (_, x) -> retrieve_type_expr x
+    | Expr_ident x -> read_ident x
+    | Expr_bin_oper (_, x, y) ->
+      let type1 = retrieve_type_expr x in
+      let type2 = retrieve_type_expr y in
+      (match type1 = type2 with
+       | true -> type1
+       | false -> fail (TypeCheckError (Mismatched_types "in binoper")))
+    | Expr_call (x, _) -> retrieve_type_expr x
+    | Expr_chan_receive x -> retrieve_type_expr x
+    | Expr_index (x, y) ->
+      if retrieve_type_expr y = return Type_int
+      then retrieve_type_expr x
+      else fail (TypeCheckError (Mismatched_types "array index"))
+  ;;
 
-  let retrieve_idents_from_long_var_decl decl =
+  let retrieve_idents_from_long_var_decl env decl =
+    let env_r =
+      match env with
+      | Loc -> save_local_ident
+      | Glob -> save_global_ident
+    in
+    let env_l =
+      match env with
+      | Loc -> save_local_ident_2
+      | Glob -> save_global_ident_2
+    in
     match decl with
-    | Long_decl_no_init (_, x, y) -> x :: y
-    | Long_decl_mult_init (_, (x, _), y) -> x :: retrieve_paris_first y
-    | Long_decl_one_init (_, x, y, z, _) -> y :: x :: z
+    | Long_decl_no_init (k, x, y) -> iter (env_r k) (x :: y)
+    | Long_decl_mult_init (k, (x, z), y) ->
+      (match k with
+       | Some k ->
+         iter2
+           ((fun k x i ->
+              if retrieve_type_expr x != return k
+              then fail (TypeCheckError (Mismatched_types "in long decl with mult init"))
+              else env_r k i)
+              k)
+           (z :: retrieve_paris_second y)
+           (x :: retrieve_paris_first y)
+       | None ->
+         iter
+           (fun (x, z) -> retrieve_type_expr z >>= env_l x)
+           (List.combine (x :: retrieve_paris_first y) (z :: retrieve_paris_second y)))
+    | Long_decl_one_init (k, x, y, z, l) ->
+      (match k with
+       | Some k ->
+         if retrieve_type_expr (Expr_call l) != return k
+         then
+           fail (TypeCheckError (Mismatched_types (Printf.sprintf "%s" (print_type k))))
+         else iter (env_r k) (x :: y :: z)
+       | None ->
+         iter
+           (fun (x, z) -> retrieve_type_expr z >>= env_l x)
+           (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z))))
   ;;
 
   let retrieve_idents_from_short_var_decl decl =
     match decl with
-    | Short_decl_mult_init ((x, _), y) -> x :: retrieve_paris_first y
-    | Short_decl_one_init (x, y, z, _) -> x :: y :: z
+    | Short_decl_mult_init ((x, z), y) ->
+      iter
+        (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_2 x)
+        (List.combine (x :: retrieve_paris_first y) (z :: retrieve_paris_second y))
+    | Short_decl_one_init (x, y, z, l) ->
+      iter
+        (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_2 x)
+        (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z)))
   ;;
 
   let seek_ident ident =
@@ -144,6 +304,11 @@ module TypeCheckMonad = struct
            (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
   ;;
 
+  (*
+     let types_binoper x y = match (retrieve_type x) retrieve type y with
+     | true -> return
+     | false -> fail ;;
+  *)
   let rec check_expr expr =
     let check_func_call (Expr_ident x, y) = seek_ident x *> iter check_expr y in
     match expr with
@@ -175,13 +340,13 @@ module TypeCheckMonad = struct
 
   let check_var_decl ident x ret = iter (save_local_ident ident) (ret x)
 
-  let check_init ident init =
+  let check_init init =
     match init with
     | Some x ->
       (match x with
        | Init_assign x -> check_assign x
        | Init_call x -> check_func_call x
-       | Init_decl x -> check_var_decl ident x retrieve_idents_from_short_var_decl
+       | Init_decl x -> return () (*доделать*)
        | Init_decr x -> seek_ident x
        | Init_incr x -> seek_ident x
        | Init_receive x -> check_expr x
@@ -189,10 +354,10 @@ module TypeCheckMonad = struct
     | None -> return ()
   ;;
 
-  let rec check_stmt ident stmt =
+  let rec check_stmt stmt =
     match stmt with
-    | Stmt_long_var_decl x -> check_var_decl ident x retrieve_idents_from_long_var_decl
-    | Stmt_short_var_decl x -> check_var_decl ident x retrieve_idents_from_short_var_decl
+    | Stmt_long_var_decl x -> retrieve_idents_from_long_var_decl Loc x
+    | Stmt_short_var_decl x -> retrieve_idents_from_short_var_decl x
     | Stmt_incr x -> seek_ident x
     | Stmt_decr x -> seek_ident x
     | Stmt_assign x -> check_assign x
@@ -200,26 +365,26 @@ module TypeCheckMonad = struct
     | Stmt_defer x -> check_func_call x
     | Stmt_go x -> check_func_call x
     | Stmt_chan_send (x, y) -> seek_ident x *> check_expr y
-    | Stmt_block x -> iter (check_stmt ident) x
+    | Stmt_block x -> iter check_stmt x
     | Stmt_break -> return ()
     | Stmt_chan_receive x -> check_expr x
     | Stmt_continue -> return ()
     | Stmt_return x -> iter check_expr x
     | Stmt_if x ->
-      check_init ident x.init
+      check_init x.init
       *> check_expr x.cond
-      *> iter (check_stmt ident) x.if_body
+      *> iter check_stmt x.if_body
       *>
         (match x.else_body with
         | Some x ->
           (match x with
-           | Else_block x -> iter (check_stmt ident) x
-           | Else_if x -> check_stmt ident (Stmt_if x))
+           | Else_block x -> iter check_stmt x
+           | Else_if x -> check_stmt (Stmt_if x))
         | None -> return ())
     | Stmt_for x ->
-      check_init ident x.init
-      *> check_init ident x.post
-      *> iter (check_stmt ident) x.body
+      check_init x.init
+      *> check_init x.post
+      *> iter check_stmt x.body
       *>
         (match x.cond with
         | Some x -> check_expr x
@@ -227,18 +392,20 @@ module TypeCheckMonad = struct
   ;;
 
   let check_func ident args body =
-    iter (save_local_ident ident) args *> iter (check_stmt ident) body
+    iter2 save_local_ident (retrieve_paris_second args) (retrieve_paris_first args)
+    *> iter check_stmt body
   ;;
 
   let check_top_decl_funcs decl =
     match decl with
-    | Decl_func (x, _) -> write_local MapIdent.empty *> save_global_ident x
-    | Decl_var x -> iter save_global_ident (retrieve_idents_from_long_var_decl x)
+    | Decl_func (x, y) ->
+      write_local MapIdent.empty *> save_global_ident (retrieve_anon_func y) x
+    | Decl_var x -> retrieve_idents_from_long_var_decl Glob x
   ;;
 
   let check_top_decl decl =
     match decl with
-    | Decl_func (x, y) -> check_func x (retrieve_paris_first y.args) y.body
+    | Decl_func (x, y) -> check_func x y.args y.body
     | Decl_var _ -> return ()
   ;;
 
@@ -264,6 +431,9 @@ let pp ast =
        prerr_string x
      | TypeCheckError (Undefined_ident x) ->
        prerr_endline "Undefined ident error:";
+       prerr_string x
+     | TypeCheckError (Mismatched_types x) ->
+       prerr_endline "Mismatched types";
        prerr_string x)
 ;;
 
@@ -274,7 +444,7 @@ let%expect_test "multiple func declaration" =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: main is redeclared in Global Scope |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: main is redeclared in func() |}]
 ;;
 
 let%expect_test "multiple declaration via args" =
@@ -289,18 +459,13 @@ let%expect_test "multiple declaration via args" =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in foo |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
 ;;
 
 let%expect_test "multiple declaration in global space" =
   pp
     [ Decl_var
-        (Long_decl_one_init
-           ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
-           , "a"
-           , "foo"
-           , [ "c" ]
-           , (Expr_ident "get", []) ))
+        (Long_decl_one_init (Some Type_int, "a", "foo", [ "c" ], (Expr_ident "get", [])))
     ; Decl_var (Long_decl_no_init (Type_int, "x", []))
     ; Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
@@ -312,7 +477,8 @@ let%expect_test "multiple declaration in global space" =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in Global Scope |}]
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    int |}]
 ;;
 
 let%expect_test "correct declarations #1" =
@@ -333,7 +499,7 @@ let%expect_test "correct declarations #1" =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in foo1 |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
 ;;
 
 let%expect_test "correct declarations #2" =
@@ -362,7 +528,8 @@ let%expect_test "correct declarations #2" =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a1 is redeclared in foo2 |}]
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    <-chan [5]int |}]
 ;;
 
 let%expect_test "undefined var inc" =
@@ -405,11 +572,7 @@ let%expect_test "multiple declarations in func body with args" =
   pp
     [ Decl_var
         (Long_decl_one_init
-           ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
-           , "a"
-           , "b"
-           , [ "c" ]
-           , (Expr_ident "get", []) ))
+           (Some Type_int, "a", "b", [ "c" ], (Expr_const (Const_int 5), [])))
     ; Decl_var (Long_decl_no_init (Type_int, "x", []))
     ; Decl_func
         ( "foo"
@@ -418,10 +581,13 @@ let%expect_test "multiple declarations in func body with args" =
           ; body = [ Stmt_long_var_decl (Long_decl_no_init (Type_int, "a2", [])) ]
           } )
     ; Decl_func ("main", { args = []; returns = None; body = [] })
+    ; Decl_func
+        ("get", { args = []; returns = Some (Only_types (Type_int, [])); body = [] })
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a2 is redeclared in foo |}]
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    int |}]
 ;;
 
 let%expect_test "main with returns and args" =
@@ -553,7 +719,8 @@ let%expect_test "unknown var in if cond" =
               ]
           } )
     ];
-  [%expect {|
+  [%expect
+    {|
     ERROR WHILE TYPECHECK WITH Undefined ident error:
     a is not defined |}]
 ;;

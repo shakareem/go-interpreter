@@ -28,6 +28,7 @@ depends: [
   "ppx_expect"
   "angstrom"
   "qcheck"
+  "pprinter"
   "ppx_deriving"
   "bisect_ppx"
   "odoc" {with-doc}
