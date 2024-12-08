@@ -188,6 +188,19 @@ module TypeCheckMonad = struct
            (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
   ;;
 
+  let seek_ident ident =
+    read_global_ident ident
+    >>= function
+    | Some _ -> return ()
+    | None ->
+      read_local_ident ident
+      >>= (function
+       | Some _ -> return ()
+       | None ->
+         fail
+           (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
+  ;;
+
   let find_func name code =
     let func_name = function
       | Decl_func (func_name, _) -> func_name
@@ -223,14 +236,14 @@ module TypeCheckMonad = struct
     match x with
     | Expr_const x -> retrieve_type_const x
     | Expr_un_oper (_, x) -> retrieve_type_expr x
-    | Expr_ident x -> read_ident x
+    | Expr_ident x -> seek_ident x *> read_ident x
     | Expr_bin_oper (_, x, y) ->
       let type1 = retrieve_type_expr x in
       let type2 = retrieve_type_expr y in
-      (match type1 = type2 with
-       | true -> type1
-       | false -> fail (TypeCheckError (Mismatched_types "in binoper")))
-    | Expr_call (x, _) -> retrieve_type_expr x
+      (match type1 != type2 with
+       | false -> type1
+       | true -> fail (TypeCheckError (Mismatched_types "in binoper")))
+    | Expr_call (x, y) -> map retrieve_type_expr y *> retrieve_type_expr x
     | Expr_chan_receive x -> retrieve_type_expr x
     | Expr_index (x, y) ->
       if retrieve_type_expr y = return Type_int
@@ -291,19 +304,6 @@ module TypeCheckMonad = struct
         (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z)))
   ;;
 
-  let seek_ident ident =
-    read_global_ident ident
-    >>= function
-    | Some _ -> return ()
-    | None ->
-      read_local_ident ident
-      >>= (function
-       | Some _ -> return ()
-       | None ->
-         fail
-           (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
-  ;;
-
   (*
      let types_binoper x y = match (retrieve_type x) retrieve type y with
      | true -> return
@@ -361,7 +361,7 @@ module TypeCheckMonad = struct
     | Stmt_incr x -> seek_ident x
     | Stmt_decr x -> seek_ident x
     | Stmt_assign x -> check_assign x
-    | Stmt_call x -> check_func_call x
+    | Stmt_call x -> retrieve_type_expr (Expr_call x) *> return ()
     | Stmt_defer x -> check_func_call x
     | Stmt_go x -> check_func_call x
     | Stmt_chan_send (x, y) -> seek_ident x *> check_expr y
@@ -391,7 +391,7 @@ module TypeCheckMonad = struct
         | None -> return ())
   ;;
 
-  let check_func ident args body =
+  let check_func args body =
     iter2 save_local_ident (retrieve_paris_second args) (retrieve_paris_first args)
     *> iter check_stmt body
   ;;
@@ -405,7 +405,7 @@ module TypeCheckMonad = struct
 
   let check_top_decl decl =
     match decl with
-    | Decl_func (x, y) -> check_func x y.args y.body
+    | Decl_func (_, y) -> write_local MapIdent.empty *> check_func y.args y.body
     | Decl_var _ -> return ()
   ;;
 
@@ -475,8 +475,7 @@ let%expect_test "multiple declaration in global space" =
           ; body = []
           } )
     ];
-  [%expect
-    {|
+  [%expect {|
     ERROR WHILE TYPECHECK WITH Mismatched types
     int |}]
 ;;
@@ -499,7 +498,7 @@ let%expect_test "correct declarations #1" =
     ];
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
+    CORRECT |}]
 ;;
 
 let%expect_test "correct declarations #2" =
@@ -526,8 +525,7 @@ let%expect_test "correct declarations #2" =
           ; body = []
           } )
     ];
-  [%expect
-    {|
+  [%expect {|
     ERROR WHILE TYPECHECK WITH Mismatched types
     <-chan [5]int |}]
 ;;
@@ -570,10 +568,7 @@ let%expect_test "undefined func call" =
 
 let%expect_test "multiple declarations in func body with args" =
   pp
-    [ Decl_var
-        (Long_decl_one_init
-           (Some Type_int, "a", "b", [ "c" ], (Expr_const (Const_int 5), [])))
-    ; Decl_var (Long_decl_no_init (Type_int, "x", []))
+    [ Decl_var (Long_decl_no_init (Type_int, "x", []))
     ; Decl_func
         ( "foo"
         , { args = [ "a2", Type_int ]
@@ -584,10 +579,8 @@ let%expect_test "multiple declarations in func body with args" =
     ; Decl_func
         ("get", { args = []; returns = Some (Only_types (Type_int, [])); body = [] })
     ];
-  [%expect
-    {|
-    ERROR WHILE TYPECHECK WITH Mismatched types
-    int |}]
+  [%expect {|
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a2 is redeclared in int |}]
 ;;
 
 let%expect_test "main with returns and args" =
@@ -620,6 +613,22 @@ let%expect_test "main with returns and args" =
 ;;
 
 let%expect_test "arg not declared" =
+  pp
+    [ Decl_func
+        ( "main"
+        , { args = []
+          ; returns = None
+          ; body = [ Stmt_block [ Stmt_call (Expr_ident "println", [ Expr_ident "a" ]) ] ]
+          } )
+    ; Decl_func ("println", { args = []; returns = None; body = [] })
+    ];
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Undefined ident error:
+    a is not defined |}]
+;;
+
+let%expect_test "types mismatch" =
   pp
     [ Decl_func
         ( "main"
@@ -723,4 +732,45 @@ let%expect_test "unknown var in if cond" =
     {|
     ERROR WHILE TYPECHECK WITH Undefined ident error:
     a is not defined |}]
+;;
+
+let%expect_test "mismatched types in binop" =
+  pp
+    [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))
+    ; Decl_var (Long_decl_mult_init (None, ("b", Expr_const (Const_string "st")), []))
+    ; Decl_func ("test", { args = []; returns = None; body = [ Stmt_return [] ] })
+    ; Decl_func
+        ( "pritln"
+        , { args = [ "a", Type_int ]
+          ; returns = None
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_func
+        ( "id"
+        , { args = [ "a", Type_int ]
+          ; returns = Some (Only_types (Type_int, []))
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_var (Long_decl_no_init (Type_int, "f", []))
+    ; Decl_func
+        ( "main"
+        , { args = []
+          ; returns = None
+          ; body =
+              [ Stmt_defer (Expr_ident "test", [])
+              ; Stmt_long_var_decl
+                  (Long_decl_mult_init
+                     ( None
+                     , ("c", Expr_bin_oper (Bin_sum, Expr_ident "a", Expr_ident "b"))
+                     , [] ))
+              ; Stmt_go
+                  ( Expr_ident "println"
+                  , [ Expr_call (Expr_ident "id", [ Expr_const (Const_int 10) ]) ] )
+              ]
+          } )
+    ];
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    in binoper |}]
 ;;
