@@ -13,20 +13,11 @@ module Ident = struct
   let compare = compare
 end
 
-type checker_type =
-  | Cint (** Integer type: [int] *)
-  | Cstring (** String type: [string] *)
-  | Cbool (** Boolean type: [bool] *)
-  | Carray of int * type' (** Array types such as [[6]int], [[0]string] *)
-  | Cfunc of type' list * type' list
-  (** Function types such as [func()], [func(string) (bool, int)].
-      Empty lists mean that there is no arguments or return values *)
-  | Cchan of chan_dir * type'
-  (** Channel type such as:
-      [chan int], [<-chan string], [chan<- bool] *)
-  | Cmismatch
-
 module MapIdent = Map.Make (Ident)
+
+type global_env = type' MapIdent.t
+type local_env = type' MapIdent.t
+type type_check = global_env * local_env
 
 module BaseMonad = struct
   type ('st, 'a) t = 'st -> 'st * ('a, error) Result.t
@@ -81,6 +72,202 @@ module BaseMonad = struct
   let run : ('st, 'a) t -> 'st -> 'st * ('a, error) Result.t = fun f st -> f st
 end
 
-type global_env = type' MapIdent.t
-type local_env = type' MapIdent.t
-type type_check = global_env * local_env
+module CheckMonad = struct
+  open TypeCheckErrors
+  open Format
+  include BaseMonad
+
+  type 'a t = (type_check, 'a) BaseMonad.t
+
+  type env_t =
+    | Loc
+    | Glob
+
+  let concat = String.concat ""
+
+  let sep_by sep list print =
+    let rec helper acc = function
+      | fst :: snd :: tl ->
+        let acc = concat [ acc; print fst; sep ] in
+        helper acc (snd :: tl)
+      | fst :: _ -> acc ^ print fst
+      | [] -> acc
+    in
+    helper "" list
+  ;;
+
+  let sep_by_comma list print = sep_by ", " list print
+
+  let rec print_type = function
+    | Type_int -> "int"
+    | Type_string -> "string"
+    | Type_bool -> "bool"
+    | Type_array (size, type') -> asprintf "[%i]%s" size (print_type type')
+    | Type_func (arg_types, return_types) ->
+      let print_returns =
+        match return_types with
+        | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma return_types print_type)
+        | type' :: _ -> " " ^ print_type type'
+        | [] -> ""
+      in
+      asprintf "func(%s)%s" (sep_by_comma arg_types print_type) print_returns
+    | Type_chan (chan_dir, t) ->
+      let print_chan_dir =
+        match chan_dir with
+        | Chan_bidirectional -> "chan"
+        | Chan_receive -> "<-chan"
+        | Chan_send -> "chan<-"
+      in
+      let print_type =
+        match t with
+        | Type_chan (Chan_receive, _) -> asprintf "(%s)" (print_type t)
+        | _ -> asprintf "%s" (print_type t)
+      in
+      asprintf "%s %s" print_chan_dir print_type
+  ;;
+
+  let retrieve_paris_first args = List.map (fun (x, _) -> x) args
+  let retrieve_paris_second args = List.map (fun (_, x) -> x) args
+
+  let return_with_fail = function
+    | Some x -> return x
+    | None -> fail (TypeCheckError Check_failed)
+  ;;
+
+  let retrieve_anon_func x =
+    let args = retrieve_paris_second x.args in
+    match x.returns with
+    | Some x ->
+      (match x with
+       | Only_types (x, y) -> Type_func (args, x :: y)
+       | Ident_and_types (x, y) -> Type_func (args, retrieve_paris_second (x :: y)))
+    | None -> Type_func (args, [])
+  ;;
+
+  let retrieve_type_const x =
+    match x with
+    | Const_array (x, y, _) -> return (Type_array (x, y))
+    | Const_int _ -> return Type_int
+    | Const_string _ -> return Type_string
+    | Const_func x -> return (retrieve_anon_func x)
+  ;;
+
+  let read_local : 'a MapIdent.t t =
+    read
+    >>= function
+    | _, local -> return local
+  ;;
+
+  let read_local_ident ident =
+    read_local >>= fun local -> MapIdent.find_opt ident local |> return
+  ;;
+
+  let read_global : 'a MapIdent.t t =
+    read
+    >>= function
+    | global, _ -> return global
+  ;;
+
+  let read_global_ident ident =
+    read_global >>= fun global -> MapIdent.find_opt ident global |> return
+  ;;
+
+  let write_local new_local =
+    read
+    >>= function
+    | global, _ -> write (global, new_local)
+  ;;
+
+  let write_local_ident el_env el_ident =
+    read_local >>= fun local -> write_local (MapIdent.add el_ident el_env local)
+  ;;
+
+  let write_global new_global =
+    read
+    >>= function
+    | _, local -> write (new_global, local)
+  ;;
+
+  let write_global_ident el_env el_ident =
+    read_global >>= fun global -> write_global (MapIdent.add el_ident el_env global)
+  ;;
+
+  let save_local_ident env ident =
+    read_local_ident ident
+    >>= function
+    | None -> write_local_ident env ident
+    | Some _ ->
+      fail
+        (TypeCheckError
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" ident (print_type env))))
+  ;;
+
+  let save_local_ident_2 env ident =
+    read_local_ident env
+    >>= function
+    | None -> write_local_ident ident env
+    | Some _ ->
+      fail
+        (TypeCheckError
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" env (print_type ident))))
+  ;;
+
+  let save_global_ident ident t =
+    read_global_ident t
+    >>= function
+    | None -> write_global_ident ident t
+    | Some _ ->
+      fail
+        (TypeCheckError
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" t (print_type ident))))
+  ;;
+
+  let save_global_ident_2 ident t =
+    read_global_ident ident
+    >>= function
+    | None -> write_global_ident t ident
+    | Some _ ->
+      fail
+        (TypeCheckError
+           (Multiple_declaration
+              (Printf.sprintf "%s is redeclared in %s" ident (print_type t))))
+  ;;
+
+  (*
+     let find_var_decl_by_name ident func_list =
+     let func_name = function
+     | Decl_var (x, _) -> ""
+     | Decl_func _ -> ""
+     in
+     Stdlib.List.find_opt (fun func -> String.equal (func_name func) ident) func_list
+     ;;
+  *)
+  let read_ident ident =
+    read_global_ident ident
+    >>= function
+    | Some x -> return x
+    | None ->
+      read_local_ident ident
+      >>= (function
+       | Some x -> return x
+       | None ->
+         fail
+           (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
+  ;;
+
+  let seek_ident ident =
+    read_global_ident ident
+    >>= function
+    | Some _ -> return ()
+    | None ->
+      read_local_ident ident
+      >>= (function
+       | Some _ -> return ()
+       | None ->
+         fail
+           (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
+  ;;
+end
