@@ -202,7 +202,18 @@ let rec check_stmt stmt =
   | Stmt_break -> return ()
   | Stmt_chan_receive x -> retrieve_type_expr x *> return ()
   | Stmt_continue -> return ()
-  | Stmt_return x -> map retrieve_type_expr x *> return ()
+  | Stmt_return x ->
+    (get_func_name
+     >>= read_ident
+     >>= fun x1 ->
+     (match x1 with
+      | Type_func (_, y) ->
+        (match List.length x = List.length y with
+         | true -> return (List.combine x y)
+         | false -> fail (TypeCheckError (Mismatched_types "func return types mismatch")))
+      | _ -> fail (TypeCheckError Check_failed))
+     >>= iter (fun (x, y) -> retrieve_type_expr x >>= fun type1 -> check_eq y type1))
+    *> return ()
   | Stmt_if x ->
     check_init x.init
     *> retrieve_type_expr x.cond
@@ -238,14 +249,15 @@ let check_top_decl_funcs decl =
 
 let check_top_decl decl =
   match decl with
-  | Decl_func (_, y) -> write_local MapIdent.empty *> check_func y.args y.body
+  | Decl_func (x, y) ->
+    write_local MapIdent.empty *> write_func_name x *> check_func y.args y.body
   | Decl_var _ -> return ()
 ;;
 
 let type_check code =
   run
     (check_main code *> iter check_top_decl_funcs code *> iter check_top_decl code)
-    (MapIdent.empty, MapIdent.empty)
+    (MapIdent.empty, MapIdent.empty, None)
 ;;
 
 let pp ast =
@@ -561,7 +573,7 @@ let%expect_test "mismatched types in binop" =
     ; Decl_func
         ( "pritln"
         , { args = [ "a", Type_int ]
-          ; returns = None
+          ; returns = Some (Only_types (Type_int, []))
           ; body = [ Stmt_return [ Expr_ident "a" ] ]
           } )
     ; Decl_func
@@ -642,7 +654,7 @@ let%expect_test "mismatched type in decl # 2" =
     ; Decl_func
         ( "println"
         , { args = [ "a", Type_int ]
-          ; returns = None
+          ; returns = Some (Only_types (Type_int, []))
           ; body = [ Stmt_return [ Expr_ident "a" ] ]
           } )
     ; Decl_func
@@ -671,7 +683,7 @@ let%expect_test "mismatched type in decl # 2" =
     ];
   [%expect {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    BINOP |}]
+    Check_eq |}]
 ;;
 
 let%expect_test "mismatched type in func_call" =
@@ -682,7 +694,7 @@ let%expect_test "mismatched type in func_call" =
     ; Decl_func
         ( "println"
         , { args = [ "a", Type_int ]
-          ; returns = None
+          ; returns = Some (Only_types (Type_int, []))
           ; body = [ Stmt_return [ Expr_ident "a" ] ]
           } )
     ; Decl_func
@@ -716,7 +728,7 @@ let%expect_test "mismatched type in func_call" =
     ];
   [%expect {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    BINOP |}]
+    Check_eq |}]
 ;;
 
 let%expect_test "correct #3" =
@@ -727,7 +739,46 @@ let%expect_test "correct #3" =
     ; Decl_func
         ( "println"
         , { args = [ "a", Type_int ]
+          ; returns = Some (Only_types (Type_int, []))
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_func
+        ( "id"
+        , { args = [ "a", Type_int ]
+          ; returns = Some (Only_types (Type_int, []))
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_var (Long_decl_no_init (Type_int, "f", []))
+    ; Decl_func
+        ( "main"
+        , { args = []
           ; returns = None
+          ; body =
+              [ Stmt_defer (Expr_ident "test", [])
+              ; Stmt_long_var_decl
+                  (Long_decl_mult_init
+                     ( None
+                     , ("c", Expr_bin_oper (Bin_sum, Expr_ident "a", Expr_ident "b"))
+                     , [] ))
+              ; Stmt_go
+                  ( Expr_ident "println"
+                  , [ Expr_call (Expr_ident "id", [ Expr_const (Const_int 10) ]) ] )
+              ]
+          } )
+    ];
+  [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "return type of func mismatch" =
+  pp
+    [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))
+    ; Decl_var (Long_decl_mult_init (Some Type_int, ("b", Expr_const (Const_int 5)), []))
+    ; Decl_func ("test", { args = []; returns = None; body = [ Stmt_return [] ] })
+    ; Decl_func
+        ( "println"
+        , { args = [ "a", Type_string ]
+          ; returns = Some (Only_types (Type_int, []))
           ; body = [ Stmt_return [ Expr_ident "a" ] ]
           } )
     ; Decl_func

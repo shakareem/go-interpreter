@@ -17,7 +17,8 @@ module MapIdent = Map.Make (Ident)
 
 type global_env = type' MapIdent.t
 type local_env = type' MapIdent.t
-type type_check = global_env * local_env
+type current_func = ident
+type type_check = global_env * local_env * current_func option
 
 module BaseMonad = struct
   type ('st, 'a) t = 'st -> 'st * ('a, error) Result.t
@@ -129,11 +130,6 @@ module CheckMonad = struct
   let retrieve_paris_first args = List.map (fun (x, _) -> x) args
   let retrieve_paris_second args = List.map (fun (_, x) -> x) args
 
-  let return_with_fail = function
-    | Some x -> return x
-    | None -> fail (TypeCheckError Check_failed)
-  ;;
-
   let retrieve_anon_func x =
     let args = retrieve_paris_second x.args in
     match x.returns with
@@ -155,7 +151,7 @@ module CheckMonad = struct
   let read_local : 'a MapIdent.t t =
     read
     >>= function
-    | _, local -> return local
+    | _, local, _ -> return local
   ;;
 
   let read_local_ident ident =
@@ -165,7 +161,7 @@ module CheckMonad = struct
   let read_global : 'a MapIdent.t t =
     read
     >>= function
-    | global, _ -> return global
+    | global, _, _ -> return global
   ;;
 
   let read_global_ident ident =
@@ -175,7 +171,7 @@ module CheckMonad = struct
   let write_local new_local =
     read
     >>= function
-    | global, _ -> write (global, new_local)
+    | global, _, fc -> write (global, new_local, fc)
   ;;
 
   let write_local_ident el_env el_ident =
@@ -185,7 +181,7 @@ module CheckMonad = struct
   let write_global new_global =
     read
     >>= function
-    | _, local -> write (new_global, local)
+    | _, local, fc -> write (new_global, local, fc)
   ;;
 
   let write_global_ident el_env el_ident =
@@ -246,11 +242,11 @@ module CheckMonad = struct
      ;;
   *)
   let read_ident ident =
-    read_global_ident ident
+    read_local_ident ident
     >>= function
     | Some x -> return x
     | None ->
-      read_local_ident ident
+      read_global_ident ident
       >>= (function
        | Some x -> return x
        | None ->
@@ -269,5 +265,18 @@ module CheckMonad = struct
        | None ->
          fail
            (TypeCheckError (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
+  ;;
+
+  let get_func_name : current_func t =
+    read
+    >>= function
+    | _, _, Some n -> return n
+    | _ -> fail (TypeCheckError Check_failed)
+  ;;
+
+  let write_func_name func =
+    read
+    >>= function
+    | g, l, _ -> write (g, l, Some func)
   ;;
 end
