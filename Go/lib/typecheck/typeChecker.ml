@@ -64,10 +64,10 @@ let eq e el1 el2 =
 
 let eq_type t1 t2 = eq equal_type' t1 t2
 
-let eq_bop (_, type1) (_, type2) =
-  match type1 == type2 with
-  | true -> true
-  | false -> false
+let check_eq t1 t2 =
+  match equal_type' t1 t2 with
+  | true -> return ()
+  | false -> fail (TypeCheckError (Mismatched_types "Check_eq"))
 ;;
 
 let rec retrieve_type_expr x =
@@ -150,25 +150,18 @@ let retrieve_idents_from_short_var_decl decl =
       (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z)))
 ;;
 
-(*
-   let types_binoper x y = match (retrieve_type x) retrieve type y with
-   | true -> return
-   | false -> fail ;;
-*)
-
 let rec check_expr expr =
-  let check_func_call (Expr_ident x, y) = seek_ident x *> iter check_expr y in
   match expr with
   | Expr_ident x -> seek_ident x
   | Expr_bin_oper (_, x, y) -> check_expr x *> check_expr y
-  | Expr_call x -> check_func_call x
+  | Expr_call _ -> return ()
   | Expr_chan_receive x -> check_expr x
   | Expr_index (x, y) -> check_expr x *> check_expr y
   | Expr_const _ -> return ()
   | Expr_un_oper (_, x) -> check_expr x
 ;;
 
-let check_func_call (Expr_ident x, y) = seek_ident x *> iter check_expr y
+let check_func_call (x, y) = check_expr x *> iter check_expr y
 
 let rec check_lvalue lv =
   match lv with
@@ -193,7 +186,7 @@ let check_init init =
     (match x with
      | Init_assign x -> check_assign x
      | Init_call x -> check_func_call x
-     | Init_decl x -> return () (*доделать*)
+     | Init_decl _ -> return () (*доделать*)
      | Init_decr x -> seek_ident x
      | Init_incr x -> seek_ident x
      | Init_receive x -> check_expr x
@@ -205,8 +198,8 @@ let rec check_stmt stmt =
   match stmt with
   | Stmt_long_var_decl x -> retrieve_idents_from_long_var_decl Loc x
   | Stmt_short_var_decl x -> retrieve_idents_from_short_var_decl x
-  | Stmt_incr x -> seek_ident x
-  | Stmt_decr x -> seek_ident x
+  | Stmt_incr x -> retrieve_ident x >>= fun e -> check_eq e Type_int
+  | Stmt_decr x -> retrieve_ident x >>= fun e -> check_eq e Type_int
   | Stmt_assign x -> check_assign x
   | Stmt_call x -> retrieve_type_expr (Expr_call x) *> return ()
   | Stmt_defer x -> check_func_call x
@@ -279,6 +272,9 @@ let pp ast =
        prerr_endline "Undefined ident error:";
        prerr_string x
      | TypeCheckError (Mismatched_types x) ->
+       prerr_endline "Mismatched types";
+       prerr_string x
+     | TypeCheckError (Cannot_assign x) ->
        prerr_endline "Mismatched types";
        prerr_string x)
 ;;
@@ -617,7 +613,7 @@ let%expect_test "mismatched types in binop" =
     ];
   [%expect {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    in binoper |}]
+    BINOP |}]
 ;;
 
 let%expect_test "correct #3" =
@@ -656,6 +652,5 @@ let%expect_test "correct #3" =
           } )
     ];
   [%expect {|
-    ERROR WHILE TYPECHECK WITH Mismatched types
-    in binope |}]
+    CORRECT |}]
 ;;
