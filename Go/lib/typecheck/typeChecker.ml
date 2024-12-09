@@ -1,3 +1,7 @@
+(** Copyright 2024, Karim Shakirov, Alexei Dmitrievtsev *)
+
+(** SPDX-License-Identifier: MIT *)
+
 open TypeCheckMonad
 open TypeCheckMonad.CheckMonad
 open TypeCheckErrors
@@ -142,8 +146,7 @@ let retrieve_idents_from_long_var_decl env decl =
          (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z))))
 ;;
 
-let retrieve_idents_from_short_var_decl decl =
-  match decl with
+let retrieve_idents_from_short_var_decl = function
   | Short_decl_mult_init ((x, z), y) ->
     iter
       (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_l x)
@@ -156,14 +159,12 @@ let retrieve_idents_from_short_var_decl decl =
 
 let check_func_call (x, y) = retrieve_type_expr x *> map retrieve_type_expr y *> return ()
 
-let rec check_lvalue lv =
-  match lv with
+let rec check_lvalue = function
   | Lvalue_ident x -> retrieve_ident x
   | Lvalue_array_index (x, y) -> check_lvalue x *> retrieve_type_expr y
 ;;
 
-let check_assign asgn =
-  match asgn with
+let check_assign = function
   | Assign_mult_expr (x, z) ->
     iter
       (fun (x, y) ->
@@ -173,8 +174,7 @@ let check_assign asgn =
   | Assign_one_expr (x, y, _, w) -> check_lvalue x *> check_lvalue y *> check_func_call w
 ;;
 
-let check_init init =
-  match init with
+let check_init = function
   | Some x ->
     (match x with
      | Init_assign x -> check_assign x
@@ -187,8 +187,7 @@ let check_init init =
   | None -> return ()
 ;;
 
-let rec check_stmt stmt =
-  match stmt with
+let rec check_stmt = function
   | Stmt_long_var_decl x -> retrieve_idents_from_long_var_decl Loc x
   | Stmt_short_var_decl x -> retrieve_idents_from_short_var_decl x
   | Stmt_incr x -> retrieve_ident x >>= fun e -> check_eq e Type_int
@@ -240,15 +239,13 @@ let check_func args body =
   *> iter check_stmt body
 ;;
 
-let check_top_decl_funcs decl =
-  match decl with
+let check_top_decl_funcs = function
   | Decl_func (x, y) ->
     write_local MapIdent.empty *> save_global_ident_r (retrieve_anon_func y) x
   | Decl_var x -> retrieve_idents_from_long_var_decl Glob x
 ;;
 
-let check_top_decl decl =
-  match decl with
+let check_top_decl = function
   | Decl_func (x, y) ->
     write_local MapIdent.empty *> write_func_name x *> check_func y.args y.body
   | Decl_var _ -> return ()
