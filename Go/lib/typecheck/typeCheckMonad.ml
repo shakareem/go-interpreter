@@ -188,7 +188,7 @@ module CheckMonad = struct
     read_global >>= fun global -> write_global (MapIdent.add el_ident el_env global)
   ;;
 
-  let save_local_ident env ident =
+  let save_local_ident_r env ident =
     read_local_ident ident
     >>= function
     | None -> write_local_ident env ident
@@ -199,7 +199,7 @@ module CheckMonad = struct
               (Printf.sprintf "%s is redeclared in %s" ident (print_type env))))
   ;;
 
-  let save_local_ident_2 env ident =
+  let save_local_ident_l env ident =
     read_local_ident env
     >>= function
     | None -> write_local_ident ident env
@@ -210,7 +210,7 @@ module CheckMonad = struct
               (Printf.sprintf "%s is redeclared in %s" env (print_type ident))))
   ;;
 
-  let save_global_ident ident t =
+  let save_global_ident_r ident t =
     read_global_ident t
     >>= function
     | None -> write_global_ident ident t
@@ -221,7 +221,7 @@ module CheckMonad = struct
               (Printf.sprintf "%s is redeclared in %s" t (print_type ident))))
   ;;
 
-  let save_global_ident_2 ident t =
+  let save_global_ident_l ident t =
     read_global_ident ident
     >>= function
     | None -> write_global_ident t ident

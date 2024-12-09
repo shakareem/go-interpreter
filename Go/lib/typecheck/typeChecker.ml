@@ -109,13 +109,13 @@ let rec retrieve_type_expr x =
 let retrieve_idents_from_long_var_decl env decl =
   let env_r =
     match env with
-    | Loc -> save_local_ident
-    | Glob -> save_global_ident
+    | Loc -> save_local_ident_r
+    | Glob -> save_global_ident_r
   in
   let env_l =
     match env with
-    | Loc -> save_local_ident_2
-    | Glob -> save_global_ident_2
+    | Loc -> save_local_ident_l
+    | Glob -> save_global_ident_l
   in
   match decl with
   | Long_decl_no_init (k, x, y) -> iter (env_r k) (x :: y)
@@ -146,11 +146,11 @@ let retrieve_idents_from_short_var_decl decl =
   match decl with
   | Short_decl_mult_init ((x, z), y) ->
     iter
-      (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_2 x)
+      (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_l x)
       (List.combine (x :: retrieve_paris_first y) (z :: retrieve_paris_second y))
   | Short_decl_one_init (x, y, z, l) ->
     iter
-      (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_2 x)
+      (fun (x, z) -> retrieve_type_expr z >>= save_local_ident_l x)
       (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z)))
 ;;
 
@@ -236,14 +236,14 @@ let rec check_stmt stmt =
 ;;
 
 let check_func args body =
-  iter2 save_local_ident (retrieve_paris_second args) (retrieve_paris_first args)
+  iter2 save_local_ident_r (retrieve_paris_second args) (retrieve_paris_first args)
   *> iter check_stmt body
 ;;
 
 let check_top_decl_funcs decl =
   match decl with
   | Decl_func (x, y) ->
-    write_local MapIdent.empty *> save_global_ident (retrieve_anon_func y) x
+    write_local MapIdent.empty *> save_global_ident_r (retrieve_anon_func y) x
   | Decl_var x -> retrieve_idents_from_long_var_decl Glob x
 ;;
 
