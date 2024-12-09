@@ -114,14 +114,10 @@ let retrieve_idents_from_long_var_decl env decl =
   | Long_decl_mult_init (k, (x, z), y) ->
     (match k with
      | Some k ->
-       iter2
-         ((fun k x i ->
-            if retrieve_type_expr x != return k
-            then fail (TypeCheckError (Mismatched_types "in long decl with mult init"))
-            else env_r k i)
+       iter
+         ((fun k (i, x) -> (retrieve_type_expr x >>= fun x -> check_eq x k) *> env_r k i)
             k)
-         (z :: retrieve_paris_second y)
-         (x :: retrieve_paris_first y)
+         ((x, z) :: y)
      | None ->
        iter
          (fun (x, z) -> retrieve_type_expr z >>= env_l x)
@@ -165,20 +161,20 @@ let check_func_call (x, y) = check_expr x *> iter check_expr y
 
 let rec check_lvalue lv =
   match lv with
-  | Lvalue_ident x -> seek_ident x
-  | Lvalue_array_index (x, y) -> check_lvalue x *> check_expr y
+  | Lvalue_ident x -> retrieve_ident x
+  | Lvalue_array_index (x, y) -> check_lvalue x *> retrieve_type_expr y
 ;;
 
 let check_assign asgn =
   match asgn with
-  | Assign_mult_expr ((x, y), z) ->
-    iter check_lvalue (x :: retrieve_paris_first z)
-    *> iter check_expr (y :: retrieve_paris_second z)
-  | Assign_one_expr (x, y, z, w) ->
-    check_lvalue x *> check_lvalue y *> iter check_lvalue z *> check_func_call w
+  | Assign_mult_expr (x, z) ->
+    iter
+      (fun (x, y) ->
+        check_lvalue x
+        >>= fun type1 -> retrieve_type_expr y >>= fun type2 -> check_eq type1 type2)
+      (x :: z)
+  | Assign_one_expr (x, y, _, w) -> check_lvalue x *> check_lvalue y *> check_func_call w
 ;;
-
-let check_var_decl ident x ret = iter (save_local_ident ident) (ret x)
 
 let check_init init =
   match init with
@@ -289,7 +285,7 @@ let%expect_test "multiple func declaration" =
     ERROR WHILE TYPECHECK WITH Multiple declaration error: main is redeclared in func() |}]
 ;;
 
-let%expect_test "multiple declaration via args" =
+let%expect_test "multiple declaration in args" =
   pp
     [ Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
@@ -342,7 +338,7 @@ let%expect_test "correct declarations #1" =
     CORRECT |}]
 ;;
 
-let%expect_test "correct declarations #2" =
+let%expect_test "incorrect declaration type" =
   pp
     [ Decl_var
         (Long_decl_one_init
@@ -455,22 +451,6 @@ let%expect_test "main with returns and args" =
 ;;
 
 let%expect_test "arg not declared" =
-  pp
-    [ Decl_func
-        ( "main"
-        , { args = []
-          ; returns = None
-          ; body = [ Stmt_block [ Stmt_call (Expr_ident "println", [ Expr_ident "a" ]) ] ]
-          } )
-    ; Decl_func ("println", { args = []; returns = None; body = [] })
-    ];
-  [%expect
-    {|
-    ERROR WHILE TYPECHECK WITH Undefined ident error:
-    a is not defined |}]
-;;
-
-let%expect_test "types mismatch" =
   pp
     [ Decl_func
         ( "main"
@@ -616,10 +596,51 @@ let%expect_test "mismatched types in binop" =
     BINOP |}]
 ;;
 
+let%expect_test "mismatched type in decl" =
+  pp
+    [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))
+    ; Decl_var
+        (Long_decl_mult_init (Some Type_string, ("b", Expr_const (Const_int 5)), []))
+    ; Decl_func ("test", { args = []; returns = None; body = [ Stmt_return [] ] })
+    ; Decl_func
+        ( "println"
+        , { args = [ "a", Type_int ]
+          ; returns = None
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_func
+        ( "id"
+        , { args = [ "a", Type_int ]
+          ; returns = Some (Only_types (Type_int, []))
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_var (Long_decl_no_init (Type_int, "f", []))
+    ; Decl_func
+        ( "main"
+        , { args = []
+          ; returns = None
+          ; body =
+              [ Stmt_defer (Expr_ident "test", [])
+              ; Stmt_long_var_decl
+                  (Long_decl_mult_init
+                     ( None
+                     , ("c", Expr_bin_oper (Bin_sum, Expr_ident "a", Expr_ident "b"))
+                     , [] ))
+              ; Stmt_go
+                  ( Expr_ident "println"
+                  , [ Expr_call (Expr_ident "id", [ Expr_const (Const_int 10) ]) ] )
+              ]
+          } )
+    ];
+  [%expect {|
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    Check_eq |}]
+;;
+
 let%expect_test "correct #3" =
   pp
     [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))
-    ; Decl_var (Long_decl_mult_init (None, ("b", Expr_const (Const_int 5)), []))
+    ; Decl_var (Long_decl_mult_init (Some Type_int, ("b", Expr_const (Const_int 5)), []))
     ; Decl_func ("test", { args = []; returns = None; body = [ Stmt_return [] ] })
     ; Decl_func
         ( "println"
