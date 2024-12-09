@@ -49,7 +49,7 @@ let check_main code =
                (Incorrect_main
                   (Printf.sprintf "func main must have no arguments and no return values")))
         | None -> return ())
-    | _ -> fail (TypeCheckError (Incorrect_main (Printf.sprintf "main not found")))
+    | _ -> fail (TypeCheckError (Incorrect_main (Printf.sprintf "main func not found")))
   in
   tc (find_func "main" code)
 ;;
@@ -59,7 +59,7 @@ let retrieve_ident ident = seek_ident ident *> read_ident ident
 let eq e el1 el2 =
   match e el1 el2 with
   | true -> return el1
-  | false -> fail (TypeCheckError (Mismatched_types "BINOP"))
+  | false -> fail (TypeCheckError (Mismatched_types "Types mismatched in binoper"))
 ;;
 
 let eq_type t1 t2 = eq equal_type' t1 t2
@@ -67,7 +67,7 @@ let eq_type t1 t2 = eq equal_type' t1 t2
 let check_eq t1 t2 =
   match equal_type' t1 t2 with
   | true -> return ()
-  | false -> fail (TypeCheckError (Mismatched_types "Check_eq"))
+  | false -> fail (TypeCheckError (Mismatched_types "Types mismatched in binoper"))
 ;;
 
 let rec retrieve_type_expr x =
@@ -103,7 +103,7 @@ let rec retrieve_type_expr x =
   | Expr_index (x, y) ->
     if retrieve_type_expr y = return Type_int
     then retrieve_type_expr x
-    else fail (TypeCheckError (Mismatched_types "array index"))
+    else fail (TypeCheckError (Mismatched_types "Array index type mismatched"))
 ;;
 
 let retrieve_idents_from_long_var_decl env decl =
@@ -475,6 +475,35 @@ let%expect_test "arg not declared" =
     a is not defined |}]
 ;;
 
+let%expect_test "no main func" =
+  pp
+    [ Decl_var
+        (Long_decl_one_init
+           ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
+           , "main"
+           , "b"
+           , [ "c" ]
+           , (Expr_ident "get", []) ))
+    ; Decl_var (Long_decl_no_init (Type_int, "x", []))
+    ; Decl_func
+        ( "main4"
+        , { args = [ "a", Type_int ]
+          ; returns = Some (Only_types (Type_bool, []))
+          ; body = []
+          } )
+    ; Decl_func
+        ( "main1"
+        , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
+          ; returns = Some (Only_types (Type_bool, []))
+          ; body = []
+          } )
+    ];
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Incorrect main error:
+    main func not found |}]
+;;
+
 let%expect_test "correct fac" =
   pp
     [ Decl_func
@@ -600,9 +629,10 @@ let%expect_test "mismatched types in binop" =
               ]
           } )
     ];
-  [%expect {|
+  [%expect
+    {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    BINOP |}]
+    Types mismatched in binoper |}]
 ;;
 
 let%expect_test "mismatched type in decl # 1" =
@@ -641,9 +671,10 @@ let%expect_test "mismatched type in decl # 1" =
               ]
           } )
     ];
-  [%expect {|
+  [%expect
+    {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    Check_eq |}]
+    Types mismatched in binoper |}]
 ;;
 
 let%expect_test "mismatched type in decl # 2" =
@@ -681,9 +712,10 @@ let%expect_test "mismatched type in decl # 2" =
               ]
           } )
     ];
-  [%expect {|
+  [%expect
+    {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    Check_eq |}]
+    Types mismatched in binoper |}]
 ;;
 
 let%expect_test "mismatched type in func_call" =
@@ -726,9 +758,10 @@ let%expect_test "mismatched type in func_call" =
               ]
           } )
     ];
-  [%expect {|
+  [%expect
+    {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    Check_eq |}]
+    Types mismatched in binoper |}]
 ;;
 
 let%expect_test "correct #3" =
@@ -805,6 +838,24 @@ let%expect_test "return type of func mismatch" =
               ]
           } )
     ];
-  [%expect {|
-    CORRECT |}]
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    Types mismatched in binoper |}]
+;;
+
+let%expect_test "return with empty func returns" =
+  pp
+    [ Decl_func ("main", { args = []; returns = None; body = [] })
+    ; Decl_func
+        ( "foo"
+        , { args = [ "a", Type_int; "b", Type_int ]
+          ; returns = None
+          ; body = [ Stmt_return [ Expr_const (Const_int 5) ] ]
+          } )
+    ];
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    func return types mismatch |}]
 ;;

@@ -232,15 +232,6 @@ module CheckMonad = struct
               (Printf.sprintf "%s is redeclared in %s" ident (print_type t))))
   ;;
 
-  (*
-     let find_var_decl_by_name ident func_list =
-     let func_name = function
-     | Decl_var (x, _) -> ""
-     | Decl_func _ -> ""
-     in
-     Stdlib.List.find_opt (fun func -> String.equal (func_name func) ident) func_list
-     ;;
-  *)
   let read_ident ident =
     read_local_ident ident
     >>= function
