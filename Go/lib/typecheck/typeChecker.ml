@@ -37,25 +37,14 @@ let retrieve_type_const x =
 ;;
 
 let check_main code =
-  let tc = function
-    | Some (Decl_func (_, x)) ->
-      if List.length x.args > 0
-      then
-        fail
-          (TypeCheckError
-             (Incorrect_main
-                (Printf.sprintf "func main must have no arguments and no return values")))
-      else (
-        match x.returns with
-        | Some _ ->
-          fail
-            (TypeCheckError
-               (Incorrect_main
-                  (Printf.sprintf "func main must have no arguments and no return values")))
-        | None -> return ())
-    | _ -> fail (TypeCheckError (Incorrect_main (Printf.sprintf "main func not found")))
-  in
-  tc (find_func "main" code)
+  match find_func "main" code with
+  | Some (Decl_func (_, { args = []; returns = None; body = _ })) -> return ()
+  | Some (Decl_func _) ->
+    fail
+      (TypeCheckError
+         (Incorrect_main
+            (Printf.sprintf "func main must have no arguments and no return values")))
+  | _ -> fail (TypeCheckError (Incorrect_main (Printf.sprintf "main func not found")))
 ;;
 
 let retrieve_ident ident = seek_ident ident *> read_ident ident
