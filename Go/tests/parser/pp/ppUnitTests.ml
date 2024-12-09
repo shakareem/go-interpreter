@@ -908,29 +908,59 @@ let%expect_test "file with factorial func" =
 let%expect_test "file with factorial func" =
   print_endline
     (print_file
-       [ Decl_var
-           (Long_decl_one_init
-              ( Some (Type_chan (Chan_receive, Type_array (5, Type_int)))
-              , "a"
-              , "foo"
-              , [ "c" ]
-              , (Expr_ident "get", []) ))
-       ; Decl_var (Long_decl_no_init (Type_int, "x", []))
-       ; Decl_func ("main", { args = []; returns = None; body = [] })
+       [ Decl_func
+           ( "main"
+           , { args = []
+             ; returns = None
+             ; body =
+                 [ Stmt_block
+                     [ Stmt_call (Expr_ident "fac", [ Expr_const (Const_int 6) ]) ]
+                 ]
+             } )
        ; Decl_func
-           ( "foo"
-           , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
-             ; returns = Some (Only_types (Type_bool, []))
-             ; body = []
+           ( "fac"
+           , { args = [ "n", Type_int ]
+             ; returns = Some (Only_types (Type_int, []))
+             ; body =
+                 [ Stmt_if
+                     { init = None
+                     ; cond =
+                         Expr_bin_oper
+                           (Bin_equal, Expr_ident "n", Expr_const (Const_int 1))
+                     ; if_body = [ Stmt_return [ Expr_const (Const_int 1) ] ]
+                     ; else_body =
+                         Some
+                           (Else_block
+                              [ Stmt_return
+                                  [ Expr_bin_oper
+                                      ( Bin_multiply
+                                      , Expr_ident "n"
+                                      , Expr_call
+                                          ( Expr_ident "fac"
+                                          , [ Expr_bin_oper
+                                                ( Bin_subtract
+                                                , Expr_ident "n"
+                                                , Expr_const (Const_int 1) )
+                                            ] ) )
+                                  ]
+                              ])
+                     }
+                 ]
              } )
        ]);
   [%expect
     {|
-    var a, foo, c <-chan [5]int = get()
+    func main() {
+        {
+            fac(6)
+        }
+    }
 
-    var x int
-
-    func main() {}
-
-    func foo(a1 int, c int, b int) bool {} |}]
+    func fac(n int) int {
+        if n == 1 {
+            return 1
+        } else {
+            return n * fac(n - 1)
+        }
+    } |}]
 ;;

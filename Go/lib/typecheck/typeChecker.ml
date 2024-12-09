@@ -90,7 +90,15 @@ let rec retrieve_type_expr x =
        compare_operation_typ x y Type_int *> return Type_bool
      | Bin_or | Bin_and -> compare_operation_typ x y Type_bool *> return Type_bool
      | Bin_equal | Bin_not_equal -> compare_arg_typ x y *> return Type_bool)
-  | Expr_call (x, y) -> map retrieve_type_expr y *> retrieve_type_expr x
+  | Expr_call (x, y) ->
+    map retrieve_type_expr y *> retrieve_type_expr x
+    >>= fun x ->
+    (match x with
+     | Type_func (x, y) ->
+       (match List.length y with
+        | 1 -> return (List.nth y 0)
+        | _ -> return (Type_func (x, y)))
+     | _ -> fail (TypeCheckError Check_failed))
   | Expr_chan_receive x -> retrieve_type_expr x
   | Expr_index (x, y) ->
     if retrieve_type_expr y = return Type_int
@@ -146,18 +154,7 @@ let retrieve_idents_from_short_var_decl decl =
       (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z)))
 ;;
 
-let rec check_expr expr =
-  match expr with
-  | Expr_ident x -> seek_ident x
-  | Expr_bin_oper (_, x, y) -> check_expr x *> check_expr y
-  | Expr_call _ -> return ()
-  | Expr_chan_receive x -> check_expr x
-  | Expr_index (x, y) -> check_expr x *> check_expr y
-  | Expr_const _ -> return ()
-  | Expr_un_oper (_, x) -> check_expr x
-;;
-
-let check_func_call (x, y) = check_expr x *> iter check_expr y
+let check_func_call (x, y) = retrieve_type_expr x *> map retrieve_type_expr y *> return ()
 
 let rec check_lvalue lv =
   match lv with
@@ -185,8 +182,8 @@ let check_init init =
      | Init_decl _ -> return () (*доделать*)
      | Init_decr x -> seek_ident x
      | Init_incr x -> seek_ident x
-     | Init_receive x -> check_expr x
-     | Init_send (x, y) -> seek_ident x *> check_expr y)
+     | Init_receive x -> retrieve_type_expr x *> return ()
+     | Init_send (x, y) -> seek_ident x *> retrieve_type_expr y *> return ())
   | None -> return ()
 ;;
 
@@ -200,15 +197,15 @@ let rec check_stmt stmt =
   | Stmt_call x -> retrieve_type_expr (Expr_call x) *> return ()
   | Stmt_defer x -> check_func_call x
   | Stmt_go x -> check_func_call x
-  | Stmt_chan_send (x, y) -> seek_ident x *> check_expr y
+  | Stmt_chan_send (x, y) -> seek_ident x *> retrieve_type_expr y *> return ()
   | Stmt_block x -> iter check_stmt x
   | Stmt_break -> return ()
-  | Stmt_chan_receive x -> check_expr x
+  | Stmt_chan_receive x -> retrieve_type_expr x *> return ()
   | Stmt_continue -> return ()
-  | Stmt_return x -> iter check_expr x
+  | Stmt_return x -> map retrieve_type_expr x *> return ()
   | Stmt_if x ->
     check_init x.init
-    *> check_expr x.cond
+    *> retrieve_type_expr x.cond
     *> iter check_stmt x.if_body
     *>
       (match x.else_body with
@@ -223,7 +220,7 @@ let rec check_stmt stmt =
     *> iter check_stmt x.body
     *>
       (match x.cond with
-      | Some x -> check_expr x
+      | Some x -> retrieve_type_expr x *> return ()
       | None -> return ())
 ;;
 
@@ -596,7 +593,7 @@ let%expect_test "mismatched types in binop" =
     BINOP |}]
 ;;
 
-let%expect_test "mismatched type in decl" =
+let%expect_test "mismatched type in decl # 1" =
   pp
     [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))
     ; Decl_var
@@ -635,6 +632,91 @@ let%expect_test "mismatched type in decl" =
   [%expect {|
     ERROR WHILE TYPECHECK WITH Mismatched types
     Check_eq |}]
+;;
+
+let%expect_test "mismatched type in decl # 2" =
+  pp
+    [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_string "s")), []))
+    ; Decl_var (Long_decl_mult_init (None, ("b", Expr_const (Const_int 5)), []))
+    ; Decl_func ("test", { args = []; returns = None; body = [ Stmt_return [] ] })
+    ; Decl_func
+        ( "println"
+        , { args = [ "a", Type_int ]
+          ; returns = None
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_func
+        ( "id"
+        , { args = [ "a", Type_int ]
+          ; returns = Some (Only_types (Type_int, []))
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_var (Long_decl_no_init (Type_int, "f", []))
+    ; Decl_func
+        ( "main"
+        , { args = []
+          ; returns = None
+          ; body =
+              [ Stmt_defer (Expr_ident "test", [])
+              ; Stmt_long_var_decl
+                  (Long_decl_mult_init
+                     ( None
+                     , ("c", Expr_bin_oper (Bin_sum, Expr_ident "a", Expr_ident "b"))
+                     , [] ))
+              ; Stmt_go
+                  ( Expr_ident "println"
+                  , [ Expr_call (Expr_ident "id", [ Expr_const (Const_int 10) ]) ] )
+              ]
+          } )
+    ];
+  [%expect {|
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    BINOP |}]
+;;
+
+let%expect_test "mismatched type in func_call" =
+  pp
+    [ Decl_var (Long_decl_mult_init (None, ("a", Expr_const (Const_int 5)), []))
+    ; Decl_var (Long_decl_mult_init (None, ("b", Expr_const (Const_int 5)), []))
+    ; Decl_func ("test", { args = []; returns = None; body = [ Stmt_return [] ] })
+    ; Decl_func
+        ( "println"
+        , { args = [ "a", Type_int ]
+          ; returns = None
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_func
+        ( "id"
+        , { args = [ "a", Type_string ]
+          ; returns = Some (Only_types (Type_string, []))
+          ; body = [ Stmt_return [ Expr_ident "a" ] ]
+          } )
+    ; Decl_var (Long_decl_no_init (Type_int, "f", []))
+    ; Decl_func
+        ( "main"
+        , { args = []
+          ; returns = None
+          ; body =
+              [ Stmt_defer (Expr_ident "test", [])
+              ; Stmt_long_var_decl
+                  (Long_decl_mult_init
+                     ( None
+                     , ( "c"
+                       , Expr_bin_oper
+                           ( Bin_sum
+                           , Expr_ident "a"
+                           , Expr_call
+                               (Expr_ident "id", [ Expr_const (Const_string "st") ]) ) )
+                     , [] ))
+              ; Stmt_go
+                  ( Expr_ident "println"
+                  , [ Expr_call (Expr_ident "id", [ Expr_const (Const_int 10) ]) ] )
+              ]
+          } )
+    ];
+  [%expect {|
+    ERROR WHILE TYPECHECK WITH Mismatched types
+    BINOP |}]
 ;;
 
 let%expect_test "correct #3" =
