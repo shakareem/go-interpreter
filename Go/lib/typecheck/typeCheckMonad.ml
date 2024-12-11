@@ -15,8 +15,13 @@ end
 
 module MapIdent = Map.Make (Ident)
 
-type global_env = type' MapIdent.t
-type local_env = type' MapIdent.t
+type ctype =
+  | Ctype of type'
+  | Ctuple of type' list
+[@@deriving show { with_path = false }, eq]
+
+type global_env = ctype MapIdent.t
+type local_env = ctype MapIdent.t
 type current_func = ident
 type type_check = global_env * local_env * current_func option
 
@@ -99,19 +104,19 @@ module CheckMonad = struct
 
   let sep_by_comma list print = sep_by ", " list print
 
-  let rec print_type = function
+  let rec print_type_simple = function
     | Type_int -> "int"
     | Type_string -> "string"
     | Type_bool -> "bool"
-    | Type_array (size, type') -> asprintf "[%i]%s" size (print_type type')
+    | Type_array (size, type') -> asprintf "[%i]%s" size (print_type_simple type')
     | Type_func (arg_types, return_types) ->
       let print_returns =
         match return_types with
-        | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma return_types print_type)
-        | type' :: _ -> " " ^ print_type type'
+        | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma return_types print_type_simple)
+        | type' :: _ -> " " ^ print_type_simple type'
         | [] -> ""
       in
-      asprintf "func(%s)%s" (sep_by_comma arg_types print_type) print_returns
+      asprintf "func(%s)%s" (sep_by_comma arg_types print_type_simple) print_returns
     | Type_chan (chan_dir, t) ->
       let print_chan_dir =
         match chan_dir with
@@ -121,10 +126,16 @@ module CheckMonad = struct
       in
       let print_type =
         match t with
-        | Type_chan (Chan_receive, _) -> asprintf "(%s)" (print_type t)
-        | _ -> asprintf "%s" (print_type t)
+        | Type_chan (Chan_receive, _) -> asprintf "(%s)" (print_type_simple t)
+        | _ -> asprintf "%s" (print_type_simple t)
       in
       asprintf "%s %s" print_chan_dir print_type
+  ;;
+
+  let print_type ct =
+    match ct with
+    | Ctype x -> print_type_simple x
+    | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map print_type_simple x))
   ;;
 
   let retrieve_paris_first args = List.map (fun (x, _) -> x) args
