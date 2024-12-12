@@ -88,10 +88,10 @@ let rec retrieve_type_expr x =
     map retrieve_type_expr y *> retrieve_type_expr x
     >>= fun x ->
     (match x with
-     | Ctype (Type_func (x, y)) ->
+     | Ctype (Type_func (_, y)) ->
        (match List.length y with
         | 1 -> return (Ctype (List.nth y 0))
-        | _ -> return (Ctype (Type_func (x, y))))
+        | _ -> return (Ctuple y))
      | _ -> fail (TypeCheckError Check_failed))
   | Expr_chan_receive x -> retrieve_type_expr x
   | Expr_index (x, y) ->
@@ -133,10 +133,21 @@ let retrieve_idents_from_long_var_decl env decl =
            (TypeCheckError (Mismatched_types (Printf.sprintf "%s" (print_type (Ctype k)))))
        else iter (env_r (Ctype k)) (x :: y :: z)
      | None ->
-       iter
-         (fun (x, z) -> retrieve_type_expr z >>= env_l x)
-         (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z))))
+       retrieve_type_expr (Expr_call l)
+       >>= fun x1 ->
+       (match x1 with
+        | Ctype _ ->
+          fail (TypeCheckError (Mismatched_types "multiple return types mismatched"))
+        | Ctuple tl ->
+          if List.length tl == List.length (x :: y :: z)
+          then iter2 (fun x y -> env_l x y) (x :: y :: z) (List.map (fun x -> Ctype x) tl)
+          else fail (TypeCheckError (Mismatched_types "multiple return types mismatched")))
+       *> return ())
 ;;
+
+(*iter
+  (fun (x, z) -> retrieve_type_expr z >>= env_l x)
+  (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z))))*)
 
 let retrieve_idents_from_short_var_decl = function
   | Short_decl_mult_init ((x, z), y) ->
@@ -234,7 +245,7 @@ let check_func args body =
 let check_top_decl_funcs = function
   | Decl_func (x, y) ->
     write_local MapIdent.empty *> save_global_ident_r (retrieve_anon_func y) x
-  | Decl_var x -> retrieve_idents_from_long_var_decl Glob x
+  | Decl_var _ -> return ()
 ;;
 
 let check_top_decl = function
@@ -242,7 +253,7 @@ let check_top_decl = function
     write_local MapIdent.empty
     *> write_func_name x
     *> check_func (List.map (fun (x, y) -> x, Ctype y) y.args) y.body
-  | Decl_var _ -> return ()
+  | Decl_var x -> retrieve_idents_from_long_var_decl Glob x
 ;;
 
 let type_check code =
@@ -300,22 +311,55 @@ let%expect_test "multiple declaration in args" =
     ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
 ;;
 
-let%expect_test "multiple declaration in global space" =
+let%expect_test "correct long_var_decl" =
   pp
-    [ Decl_var
-        (Long_decl_one_init (Some Type_int, "a", "foo", [ "c" ], (Expr_ident "get", [])))
+    [ Decl_var (Long_decl_one_init (None, "a", "foo", [ "c" ], (Expr_ident "get", [])))
     ; Decl_var (Long_decl_no_init (Type_int, "x", []))
     ; Decl_func ("main", { args = []; returns = None; body = [] })
     ; Decl_func
-        ( "foo"
-        , { args = [ "a1", Type_int; "c", Type_int; "b", Type_int ]
-          ; returns = Some (Only_types (Type_bool, []))
+        ( "get"
+        , { args = []
+          ; returns = Some (Only_types (Type_int, [ Type_int; Type_int ]))
           ; body = []
           } )
     ];
   [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "incorrect long_var_decl with different lengths" =
+  pp
+    [ Decl_var (Long_decl_one_init (None, "a", "foo", [ "c" ], (Expr_ident "get", [])))
+    ; Decl_var (Long_decl_no_init (Type_int, "x", []))
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
+    ; Decl_func
+        ( "get"
+        , { args = []
+          ; returns = Some (Only_types (Type_int, [ Type_int; Type_int; Type_int ]))
+          ; body = []
+          } )
+    ];
+  [%expect
+    {|
     ERROR WHILE TYPECHECK WITH Mismatched types
-    int |}]
+    multiple return types mismatched |}]
+;;
+
+let%expect_test "multiple declaration in global space" =
+  pp
+    [ Decl_var (Long_decl_one_init (None, "a", "foo", [ "c" ], (Expr_ident "foo", [])))
+    ; Decl_var (Long_decl_no_init (Type_int, "x", []))
+    ; Decl_func ("main", { args = []; returns = None; body = [] })
+    ; Decl_func
+        ( "foo"
+        , { args = []
+          ; returns = Some (Only_types (Type_int, [ Type_int; Type_int ]))
+          ; body = []
+          } )
+    ];
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in int |}]
 ;;
 
 let%expect_test "correct declarations #1" =

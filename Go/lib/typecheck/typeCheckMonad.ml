@@ -15,6 +15,9 @@ end
 
 module MapIdent = Map.Make (Ident)
 
+(*Is used to check multiple returns. Go has no tuple type,
+  multiple returns put the result bytes in stack
+  https://stackoverflow.com/questions/18622706/what-exactly-is-happening-when-go-returns-multiple-values*)
 type ctype =
   | Ctype of type'
   | Ctuple of type' list
