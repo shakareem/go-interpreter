@@ -182,14 +182,16 @@ module CheckMonad = struct
     read_global >>= fun global -> MapIdent.find_opt ident global |> return
   ;;
 
+  let rec fix f x = f (fix f) (return x)
+
   let write_local new_local =
     read
     >>= function
     | global, _, fc -> write (global, new_local, fc)
   ;;
 
-  let write_local_ident el_env el_ident =
-    read_local >>= fun local -> write_local (MapIdent.add el_ident el_env local)
+  let write_local_ident el_type el_ident =
+    read_local >>= fun local -> write_local (MapIdent.add el_ident el_type local)
   ;;
 
   let write_global new_global =
@@ -198,8 +200,8 @@ module CheckMonad = struct
     | _, local, fc -> write (new_global, local, fc)
   ;;
 
-  let write_global_ident el_env el_ident =
-    read_global >>= fun global -> write_global (MapIdent.add el_ident el_env global)
+  let write_global_ident el_type el_ident =
+    read_global >>= fun global -> write_global (MapIdent.add el_ident el_type global)
   ;;
 
   let save_local_ident_r env ident =
