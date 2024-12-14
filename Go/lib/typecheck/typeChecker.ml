@@ -29,15 +29,12 @@ let retrieve_anon_func x =
 ;;
 
 let check_anon_func x f =
-  let map : 'a MapIdent.t t =
-    read
-    >>= function
-    | _, local, _ -> return local
-  in
   let args = retrieve_paris_second x.args in
   let save_args = iter (fun (x, y) -> save_local_ident_l x (Ctype y)) x.args in
-  save_args
-  *> iter (fun x -> f x *> (map >>= fun x -> write_local x)) x.body
+  write_env
+  *> save_args
+  *> iter (fun x -> f x) x.body
+  *> delete_env
   *>
   match x.returns with
   | Some x ->
@@ -265,24 +262,19 @@ let rec check_stmt = function
 ;;
 
 let check_top_decl_funcs = function
-  | Decl_func (x, y) ->
-    write_local MapIdent.empty *> save_global_ident_r (retrieve_anon_func y) x
+  | Decl_func (x, y) -> save_global_ident_r (retrieve_anon_func y) x
   | Decl_var _ -> return ()
 ;;
 
 let check_top_decl = function
-  | Decl_func (x, y) ->
-    write_local MapIdent.empty
-    *> write_func_name x
-    *> check_anon_func y check_stmt
-    *> return ()
+  | Decl_func (x, y) -> write_func_name x *> check_anon_func y check_stmt *> return ()
   | Decl_var x -> retrieve_idents_from_long_var_decl check_stmt Glob x
 ;;
 
 let type_check code =
   run
     (check_main code *> iter check_top_decl_funcs code *> iter check_top_decl code)
-    (MapIdent.empty, MapIdent.empty, None)
+    (MapIdent.empty, [ MapIdent.empty ], None)
 ;;
 
 let pp ast =

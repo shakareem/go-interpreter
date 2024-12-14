@@ -24,7 +24,7 @@ type ctype =
 [@@deriving show { with_path = false }, eq]
 
 type global_env = ctype MapIdent.t
-type local_env = ctype MapIdent.t
+type local_env = ctype MapIdent.t list
 type current_func = ident
 type type_check = global_env * local_env * current_func option
 
@@ -162,14 +162,22 @@ module CheckMonad = struct
     | Const_func x -> return (retrieve_anon_func x)
   ;;
 
-  let read_local : 'a MapIdent.t t =
+  let read_local : 'a MapIdent.t list t =
     read
     >>= function
     | _, local, _ -> return local
   ;;
 
+  let seek_local_definition_ident ident =
+    read_local >>= fun local -> MapIdent.find_opt ident (List.hd local) |> return
+  ;;
+
   let read_local_ident ident =
-    read_local >>= fun local -> MapIdent.find_opt ident local |> return
+    read_local
+    >>= fun local ->
+    match List.find_opt (fun x -> MapIdent.mem ident x) local with
+    | None -> return None
+    | Some x -> return (MapIdent.find_opt ident x)
   ;;
 
   let read_global : 'a MapIdent.t t =
@@ -191,7 +199,9 @@ module CheckMonad = struct
   ;;
 
   let write_local_ident el_type el_ident =
-    read_local >>= fun local -> write_local (MapIdent.add el_ident el_type local)
+    read_local
+    >>= fun local ->
+    write_local (MapIdent.add el_ident el_type (List.hd local) :: List.tl local)
   ;;
 
   let write_global new_global =
@@ -205,7 +215,7 @@ module CheckMonad = struct
   ;;
 
   let save_local_ident_r env ident =
-    read_local_ident ident
+    seek_local_definition_ident ident
     >>= function
     | None -> write_local_ident env ident
     | Some _ ->
@@ -216,7 +226,7 @@ module CheckMonad = struct
   ;;
 
   let save_local_ident_l env ident =
-    read_local_ident env
+    seek_local_definition_ident env
     >>= function
     | None -> write_local_ident ident env
     | Some _ ->
@@ -262,11 +272,11 @@ module CheckMonad = struct
   ;;
 
   let seek_ident ident =
-    read_global_ident ident
+    read_local_ident ident
     >>= function
     | Some _ -> return ()
     | None ->
-      read_local_ident ident
+      read_global_ident ident
       >>= (function
        | Some _ -> return ()
        | None ->
@@ -280,6 +290,9 @@ module CheckMonad = struct
     | _, _, Some n -> return n
     | _ -> fail (TypeCheckError Check_failed)
   ;;
+
+  let write_env = read_local >>= fun x -> write_local (MapIdent.empty :: x)
+  let delete_env = read_local >>= fun x -> write_local (List.tl x)
 
   let write_func_name func =
     read
