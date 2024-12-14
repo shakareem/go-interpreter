@@ -21,10 +21,9 @@ let find_func name code =
 let retrieve_anon_func x =
   let args = retrieve_paris_second x.args in
   match x.returns with
-  | Some x ->
-    (match x with
-     | Only_types (x, y) -> Ctype (Type_func (args, x :: y))
-     | Ident_and_types (x, y) -> Ctype (Type_func (args, retrieve_paris_second (x :: y))))
+  | Some (Only_types (x, y)) -> Ctype (Type_func (args, x :: y))
+  | Some (Ident_and_types (x, y)) ->
+    Ctype (Type_func (args, retrieve_paris_second (x :: y)))
   | None -> Ctype (Type_func (args, []))
 ;;
 
@@ -37,22 +36,17 @@ let check_anon_func x f =
   *> delete_env
   *>
   match x.returns with
-  | Some x ->
-    (match x with
-     | Only_types (x, y) -> return (Ctype (Type_func (args, x :: y)))
-     | Ident_and_types (x, y) ->
-       return (Ctype (Type_func (args, retrieve_paris_second (x :: y)))))
+  | Some (Only_types (x, y)) -> return (Ctype (Type_func (args, x :: y)))
+  | Some (Ident_and_types (x, y)) ->
+    return (Ctype (Type_func (args, retrieve_paris_second (x :: y))))
   | None -> return (Ctype (Type_func (args, [])))
 ;;
 
-let retrieve_type_const x check_afc =
-  match x with
+let retrieve_type_const check_afc = function
   | Const_array (x, y, _) -> return (Ctype (Type_array (x, y)))
   | Const_int _ -> return (Ctype Type_int)
   | Const_string _ -> return (Ctype Type_string)
-  | Const_func x ->
-    iter (fun (x, y) -> save_local_ident_l x (Ctype y)) x.args
-    *> check_anon_func x check_afc
+  | Const_func x -> check_anon_func x check_afc
 ;;
 
 let check_main code =
@@ -82,9 +76,8 @@ let check_eq t1 t2 =
   | false -> fail (TypeCheckError (Mismatched_types "Types mismatched in binoper"))
 ;;
 
-let rec retrieve_type_expr caf x =
-  match x with
-  | Expr_const x -> retrieve_type_const x caf
+let rec retrieve_type_expr caf = function
+  | Expr_const x -> retrieve_type_const caf x
   | Expr_un_oper (_, x) -> retrieve_type_expr caf x
   | Expr_ident x -> retrieve_ident x
   | Expr_bin_oper (o, x, y) ->
@@ -105,8 +98,7 @@ let rec retrieve_type_expr caf x =
      | Bin_equal | Bin_not_equal -> compare_arg_typ x y *> return (Ctype Type_bool))
   | Expr_call (x, y) ->
     map (retrieve_type_expr caf) y *> (retrieve_type_expr caf) x
-    >>= fun x ->
-    (match x with
+    >>= (function
      | Ctype (Type_func (_, y)) ->
        (match List.length y with
         | 1 -> return (Ctype (List.nth y 0))
@@ -908,4 +900,52 @@ let%expect_test "return with empty func returns" =
     {|
     ERROR WHILE TYPECHECK WITH Mismatched types
     func return types mismatch |}]
+;;
+
+let%expect_test "correct anon_func" =
+  pp
+    [ Decl_func ("s", { args = [ "a", Type_string ]; returns = None; body = [] })
+    ; Decl_func
+        ( "main"
+        , { args = []
+          ; returns = None
+          ; body =
+              [ Stmt_short_var_decl
+                  (Short_decl_mult_init
+                     ( ( "value"
+                       , Expr_const
+                           (Const_func
+                              { args = [ "a", Type_string ]
+                              ; returns = None
+                              ; body =
+                                  [ Stmt_short_var_decl
+                                      (Short_decl_mult_init
+                                         ( ( "g"
+                                           , Expr_const
+                                               (Const_func
+                                                  { args = [ "a", Type_string ]
+                                                  ; returns = None
+                                                  ; body =
+                                                      [ Stmt_call
+                                                          ( Expr_ident "s"
+                                                          , [ Expr_const
+                                                                (Const_string "Test")
+                                                            ] )
+                                                      ]
+                                                  }) )
+                                         , [] ))
+                                  ; Stmt_call
+                                      ( Expr_ident "s"
+                                      , [ Expr_const (Const_string "Test") ] )
+                                  ; Stmt_call
+                                      (Expr_ident "g", [ Expr_const (Const_string "2") ])
+                                  ]
+                              }) )
+                     , [] ))
+              ; Stmt_call (Expr_ident "value", [ Expr_const (Const_string "4") ])
+              ]
+          } )
+    ];
+  [%expect {|
+    CORRECT |}]
 ;;

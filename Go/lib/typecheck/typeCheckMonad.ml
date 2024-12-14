@@ -135,8 +135,7 @@ module CheckMonad = struct
       asprintf "%s %s" print_chan_dir print_type
   ;;
 
-  let print_type ct =
-    match ct with
+  let print_type = function
     | Ctype x -> print_type_simple x
     | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map print_type_simple x))
   ;;
