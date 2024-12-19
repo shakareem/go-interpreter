@@ -3,7 +3,6 @@
 (** SPDX-License-Identifier: MIT *)
 
 open Ast
-open BaseMonad
 
 module Ident = struct
   type t = ident
