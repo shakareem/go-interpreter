@@ -4,7 +4,7 @@
 
 open TypeCheckMonad
 open TypeCheckMonad.CheckMonad
-open TypeCheckErrors
+open Errors
 open Ast
 
 let retrieve_paris_first args = List.map (fun (x, _) -> x) args
@@ -54,10 +54,10 @@ let check_main code =
   | Some (Decl_func (_, { args = []; returns = None; body = _ })) -> return ()
   | Some (Decl_func _) ->
     fail
-      (TypeCheckError
+      (Type_check_error
          (Incorrect_main
             (Printf.sprintf "func main must have no arguments and no return values")))
-  | _ -> fail (TypeCheckError (Incorrect_main (Printf.sprintf "main func not found")))
+  | _ -> fail (Type_check_error (Incorrect_main (Printf.sprintf "main func not found")))
 ;;
 
 let retrieve_ident ident = seek_ident ident *> read_ident ident
@@ -65,7 +65,7 @@ let retrieve_ident ident = seek_ident ident *> read_ident ident
 let eq e el1 el2 =
   match e el1 el2 with
   | true -> return el1
-  | false -> fail (TypeCheckError (Mismatched_types "Types mismatched in binoper"))
+  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in binoper"))
 ;;
 
 let eq_type t1 t2 = eq equal_ctype t1 t2
@@ -73,7 +73,7 @@ let eq_type t1 t2 = eq equal_ctype t1 t2
 let check_eq t1 t2 =
   match equal_ctype t1 t2 with
   | true -> return ()
-  | false -> fail (TypeCheckError (Mismatched_types "Types mismatched in binoper"))
+  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in binoper"))
 ;;
 
 let rec retrieve_type_expr caf = function
@@ -103,12 +103,12 @@ let rec retrieve_type_expr caf = function
        (match List.length y with
         | 1 -> return (Ctype (List.nth y 0))
         | _ -> return (Ctuple y))
-     | _ -> fail (TypeCheckError Check_failed))
+     | _ -> fail (Type_check_error Check_failed))
   | Expr_chan_receive x -> retrieve_type_expr caf x
   | Expr_index (x, y) ->
     if retrieve_type_expr caf y = return (Ctype Type_int)
     then retrieve_type_expr caf x
-    else fail (TypeCheckError (Mismatched_types "Array index type mismatched"))
+    else fail (Type_check_error (Mismatched_types "Array index type mismatched"))
 ;;
 
 let retrieve_idents_from_long_var_decl caf env decl =
@@ -142,18 +142,20 @@ let retrieve_idents_from_long_var_decl caf env decl =
        if retrieve_type_expr caf (Expr_call l) != return (Ctype k)
        then
          fail
-           (TypeCheckError (Mismatched_types (Printf.sprintf "%s" (print_type (Ctype k)))))
+           (Type_check_error
+              (Mismatched_types (Printf.sprintf "%s" (print_type (Ctype k)))))
        else iter (env_r (Ctype k)) (x :: y :: z)
      | None ->
        retrieve_type_expr caf (Expr_call l)
        >>= fun x1 ->
        (match x1 with
         | Ctype _ ->
-          fail (TypeCheckError (Mismatched_types "multiple return types mismatched"))
+          fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
         | Ctuple tl ->
           if List.length tl == List.length (x :: y :: z)
           then iter2 (fun x y -> env_l x y) (x :: y :: z) (List.map (fun x -> Ctype x) tl)
-          else fail (TypeCheckError (Mismatched_types "multiple return types mismatched")))
+          else
+            fail (Type_check_error (Mismatched_types "multiple return types mismatched")))
        *> return ())
 ;;
 
@@ -227,8 +229,9 @@ let rec check_stmt = function
       | Ctype (Type_func (_, y)) ->
         (match List.length x = List.length y with
          | true -> return (List.combine x (List.map (fun x -> Ctype x) y))
-         | false -> fail (TypeCheckError (Mismatched_types "func return types mismatch")))
-      | _ -> fail (TypeCheckError Check_failed))
+         | false ->
+           fail (Type_check_error (Mismatched_types "func return types mismatch")))
+      | _ -> fail (Type_check_error Check_failed))
      >>= iter (fun (x, y) ->
        retrieve_type_expr check_stmt x >>= fun type1 -> check_eq y type1))
     *> return ()
@@ -275,20 +278,20 @@ let pp ast =
   | _, Result.Error x ->
     prerr_string "ERROR WHILE TYPECHECK WITH ";
     (match x with
-     | TypeCheckError Check_failed -> prerr_endline "Check failed"
-     | TypeCheckError (Multiple_declaration x) ->
+     | Type_check_error Check_failed -> prerr_endline "Check failed"
+     | Type_check_error (Multiple_declaration x) ->
        prerr_string "Multiple declaration error: ";
        prerr_string x
-     | TypeCheckError (Incorrect_main x) ->
+     | Type_check_error (Incorrect_main x) ->
        prerr_endline "Incorrect main error:";
        prerr_string x
-     | TypeCheckError (Undefined_ident x) ->
+     | Type_check_error (Undefined_ident x) ->
        prerr_endline "Undefined ident error:";
        prerr_string x
-     | TypeCheckError (Mismatched_types x) ->
+     | Type_check_error (Mismatched_types x) ->
        prerr_endline "Mismatched types";
        prerr_string x
-     | TypeCheckError (Cannot_assign x) ->
+     | Type_check_error (Cannot_assign x) ->
        prerr_endline "Mismatched types";
        prerr_string x)
 ;;
