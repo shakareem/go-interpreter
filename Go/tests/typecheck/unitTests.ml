@@ -11,7 +11,17 @@ let pp str =
   | Error _ -> print_endline ": syntax error"
 ;;
 
-let%expect_test "multiple func declaration" =
+(********** main func **********)
+
+let%expect_test "ok: single main" =
+  pp {|
+    func main() {}
+    |};
+  [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "err: multiple main" =
   pp {|
     func main() {}
     func main() {}
@@ -21,44 +31,200 @@ let%expect_test "multiple func declaration" =
     ERROR WHILE TYPECHECK WITH Multiple declaration error: main is redeclared in func() |}]
 ;;
 
-let%expect_test "multiple declaration in args" =
+let%expect_test "err: main with returns" =
   pp {|
+  func main() bool {}
+  |};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Incorrect main error: func main must have no arguments and no return values |}]
+;;
+
+let%expect_test "err: main with args" =
+  pp {|
+  func main(a int) {}
+  |};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Incorrect main error: func main must have no arguments and no return values |}]
+;;
+
+let%expect_test "err: no main" =
+  pp {|
+  var a int
+  func foo(a, a, b int) {}
+  |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Incorrect main error: main func not found |}]
+;;
+
+let%expect_test "ok: main call" =
+  pp {|
+    func foo() {
+        main()
+    }
+
     func main() {}
-    func foo(a, a, b int) {}
+    |};
+  [%expect {|
+    CORRECT |}]
+;;
+
+(********** top var decl **********)
+
+let%expect_test "ok: single var decl no type with simple init " =
+  pp {|
+  var a = 5
+
+  func main() {}
+  |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: single var decl with type and right init " =
+  pp {|
+  var a int = 5
+
+  func main() {}
+  |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: single var decl with type and wrong init " =
+  pp {|
+  var a int = ""
+
+  func main() {}
+  |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in binoper |}]
+;;
+
+let%expect_test "ok: func call init with right number of elements" =
+  pp
+    {|
+    var a, b, c  = get3()
+
+    func get3() (int, int, int) {
+        return 1, 2, 3
+    }
+    
+    func main() {}
+    |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: func call one init with mismatched number of elements" =
+  pp {|
+    var a, b, c  = get0()
+
+    func get0() {}
+    
+    func main() {}
+    |};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: multiple return types mismatched |}]
+;;
+
+let%expect_test "err: func call one init with mismathced types" =
+  pp
+    {|
+    var a, b, c bool = get3()
+
+    func get3() (int, int, int) {
+        return 1, 2, 3
+    }
+    
+    func main() {}
+    |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: bool |}]
+;;
+
+let%expect_test "err: var redeclaration" =
+  pp {|
+    var a = 0
+
+    var a = ""
+    s
+    func main() {}
+    |};
+  [%expect {| : syntax error |}]
+;;
+
+(********** top func decl **********)
+
+let%expect_test "ok: simple func" =
+  pp {|
+    func foo() {}
+
+    func main() {}
+    |};
+  [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "ok: id func " =
+  pp {|
+    func id(a int) int {
+        return a
+    }
+
+    func main() {}
+    |};
+  [%expect {|
+    CORRECT |}]
+;;
+
+let%expect_test "err: repeated idents in args" =
+  pp {|
+    func foo(a, a int) {}
+
+    func main() {}
     |};
   [%expect
     {|
     ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
 ;;
 
-let%expect_test "incorrect long_var_decl with different lengths" =
+let%expect_test "err: func redeclaration" =
   pp
     {|
-    var a, foo, c  = get()
+    func foo(a int) {}
 
-    var x int
-
-    func main() {}
-
-    func get() (int, int, int) {} |};
-  [%expect {| CORRECT |}]
-;;
-
-let%expect_test "multiple declaration in global space" =
-  pp
-    {|
-    var a, foo, c  = foo()
-
-    var x int
+    func foo() int {
+        return 5
+    }
 
     func main() {}
-
-    func foo() (int, int, int) {} |};
+    |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in int |}]
+    {|
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in func() int |}]
 ;;
 
-let%expect_test "correct declarations #1" =
+let%expect_test "err: func arg redeclaration" =
+  pp {|
+    func foo(a int) {
+        var a int
+    }
+
+    func main() {}
+    |};
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
+;;
+
+let%expect_test "err: var and func with the same name" =
+  pp {|
+    var foo int
+
+    func foo() {}
+
+    func main() {}
+    |};
+  [%expect
+    {|
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in int |}]
+;;
+
+let%expect_test "ok: correct declarations #1" =
   pp
     {|
     func main() {}
@@ -69,20 +235,25 @@ let%expect_test "correct declarations #1" =
   [%expect {| CORRECT |}]
 ;;
 
-let%expect_test "incorrect declaration type" =
+let%expect_test "ok: factorial func" =
   pp
     {|
-    var a, b, c <-chan [5]int = get()
+    func main() {
+        fac(6)
+    }
 
-    var x int
-
-    func main() {}
-
-    func foo1(a1 int, c int, b int) bool {}
-
-    func foo2(a1 int, c int, b int) bool {}  |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: <-chan [5]int |}]
+    func fac(n int) int {
+        if n == 1 {
+            return 1
+        } else {
+            return n * fac(n - 1)
+        }
+    }
+  |};
+  [%expect {| CORRECT |}]
 ;;
+
+(********** stmt **********)
 
 let%expect_test "undefined var inc" =
   pp
@@ -111,84 +282,15 @@ let%expect_test "undefined func call" =
   [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: foo2 is not defined |}]
 ;;
 
-let%expect_test "multiple declarations in func body with args" =
-  pp
-    {|
-    var x int
-
-    func foo(a2 int) bool {
-        var a2 int
-    }
-
-    func main() {}
-
-    func get() int {}
-    |};
-  [%expect
-    {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a2 is redeclared in int |}]
-;;
-
-let%expect_test "main with returns and args" =
-  pp
-    {|
-    var a, b, c <-chan [5]int = get()
-
-    var x int
-
-    func main(a int) bool {}
-
-    func main1(a1 int, c int, b int) bool {}
-  |};
-  [%expect
-    {| ERROR WHILE TYPECHECK WITH Incorrect main error: func main must have no arguments and no return values |}]
-;;
-
 let%expect_test "arg not declared" =
-  pp
-    {|
+  pp {|
     func main() {
-        {
-            println(a)
-        }
+        println(a)
     }
 
-    func println() {}
+    func println(a int) {}
   |};
   [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: a is not defined |}]
-;;
-
-let%expect_test "no main func" =
-  pp
-    {|
-    var main, b, c <-chan [5]int = get()
-
-    var x int
-
-    func main4(a int) bool {}
-
-    func main1(a1 int, c int, b int) bool {}
-  |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Incorrect main error: main func not found |}]
-;;
-
-let%expect_test "correct fac" =
-  pp
-    {|
-    func main() {
-        {
-            fac(6)
-        }
-    }
-
-    func fac(n int) int {
-        if n == 1 {
-            return 1
-        } else {
-            return n * fac(n - 1)
-        }
-    }
-  |};
-  [%expect {| CORRECT |}]
 ;;
 
 let%expect_test "unknown var in if cond" =
