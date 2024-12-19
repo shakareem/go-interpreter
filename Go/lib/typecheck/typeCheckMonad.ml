@@ -36,52 +36,9 @@ module CheckMonad = struct
     | Loc
     | Glob
 
-  let concat = String.concat ""
-
-  let sep_by sep list print =
-    let rec helper acc = function
-      | fst :: snd :: tl ->
-        let acc = concat [ acc; print fst; sep ] in
-        helper acc (snd :: tl)
-      | fst :: _ -> acc ^ print fst
-      | [] -> acc
-    in
-    helper "" list
-  ;;
-
-  let sep_by_comma list print = sep_by ", " list print
-
-  let rec print_type_simple = function
-    | Type_int -> "int"
-    | Type_string -> "string"
-    | Type_bool -> "bool"
-    | Type_array (size, type') -> asprintf "[%i]%s" size (print_type_simple type')
-    | Type_func (arg_types, return_types) ->
-      let print_returns =
-        match return_types with
-        | _ :: _ :: _ -> asprintf " (%s)" (sep_by_comma return_types print_type_simple)
-        | type' :: _ -> " " ^ print_type_simple type'
-        | [] -> ""
-      in
-      asprintf "func(%s)%s" (sep_by_comma arg_types print_type_simple) print_returns
-    | Type_chan (chan_dir, t) ->
-      let print_chan_dir =
-        match chan_dir with
-        | Chan_bidirectional -> "chan"
-        | Chan_receive -> "<-chan"
-        | Chan_send -> "chan<-"
-      in
-      let print_type =
-        match t with
-        | Type_chan (Chan_receive, _) -> asprintf "(%s)" (print_type_simple t)
-        | _ -> asprintf "%s" (print_type_simple t)
-      in
-      asprintf "%s %s" print_chan_dir print_type
-  ;;
-
   let print_type = function
-    | Ctype x -> print_type_simple x
-    | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map print_type_simple x))
+    | Ctype x -> PpType.print_type x
+    | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map PpType.print_type x))
   ;;
 
   let retrieve_paris_first args = List.map (fun (x, _) -> x) args
@@ -90,10 +47,8 @@ module CheckMonad = struct
   let retrieve_anon_func x =
     let args = retrieve_paris_second x.args in
     match x.returns with
-    | Some x ->
-      (match x with
-       | Only_types (x, y) -> Type_func (args, x :: y)
-       | Ident_and_types (x, y) -> Type_func (args, retrieve_paris_second (x :: y)))
+    | Some (Only_types (x, y)) -> Type_func (args, x :: y)
+    | Some (Ident_and_types (x, y)) -> Type_func (args, retrieve_paris_second (x :: y))
     | None -> Type_func (args, [])
   ;;
 

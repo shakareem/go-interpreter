@@ -7,8 +7,8 @@ open TypeCheckMonad.CheckMonad
 open Errors
 open Ast
 
-let retrieve_paris_first args = List.map (fun (x, _) -> x) args
-let retrieve_paris_second args = List.map (fun (_, x) -> x) args
+let retrieve_pairs_first args = List.map (fun (x, _) -> x) args
+let retrieve_pairs_second args = List.map (fun (_, x) -> x) args
 
 let find_func name code =
   let func_name = function
@@ -19,16 +19,16 @@ let find_func name code =
 ;;
 
 let retrieve_anon_func x =
-  let args = retrieve_paris_second x.args in
+  let args = retrieve_pairs_second x.args in
   match x.returns with
   | Some (Only_types (x, y)) -> Ctype (Type_func (args, x :: y))
   | Some (Ident_and_types (x, y)) ->
-    Ctype (Type_func (args, retrieve_paris_second (x :: y)))
+    Ctype (Type_func (args, retrieve_pairs_second (x :: y)))
   | None -> Ctype (Type_func (args, []))
 ;;
 
 let check_anon_func x f =
-  let args = retrieve_paris_second x.args in
+  let args = retrieve_pairs_second x.args in
   let save_args = iter (fun (x, y) -> save_local_ident_l x (Ctype y)) x.args in
   write_env
   *> save_args
@@ -38,7 +38,7 @@ let check_anon_func x f =
   match x.returns with
   | Some (Only_types (x, y)) -> return (Ctype (Type_func (args, x :: y)))
   | Some (Ident_and_types (x, y)) ->
-    return (Ctype (Type_func (args, retrieve_paris_second (x :: y))))
+    return (Ctype (Type_func (args, retrieve_pairs_second (x :: y))))
   | None -> return (Ctype (Type_func (args, [])))
 ;;
 
@@ -62,6 +62,8 @@ let check_main code =
 
 let retrieve_ident ident = seek_ident ident *> read_ident ident
 
+(* В следующих трёх функциях надо что-то поменять, они используются
+   в бин и ун операх и инкременте/декременте *)
 let eq e el1 el2 =
   match e el1 el2 with
   | true -> return el1
@@ -78,9 +80,15 @@ let check_eq t1 t2 =
 
 let rec retrieve_type_expr caf = function
   | Expr_const x -> retrieve_type_const caf x
-  | Expr_un_oper (_, x) -> retrieve_type_expr caf x
+  | Expr_un_oper (op, x) ->
+    (match op with
+     | Unary_minus | Unary_plus ->
+       retrieve_type_expr caf x
+       >>= fun t -> check_eq t (Ctype Type_int) *> return (Ctype Type_int)
+     | Unary_not -> retrieve_type_expr caf x)
+    >>= fun t -> check_eq t (Ctype Type_bool) *> return (Ctype Type_bool)
   | Expr_ident x -> retrieve_ident x
-  | Expr_bin_oper (o, x, y) ->
+  | Expr_bin_oper (op, x, y) ->
     let compare_arg_typ type1 type2 =
       retrieve_type_expr caf type1
       >>= fun type1 -> retrieve_type_expr caf type2 >>= fun type2 -> eq_type type1 type2
@@ -88,7 +96,7 @@ let rec retrieve_type_expr caf = function
     let compare_operation_typ type1 type2 t =
       compare_arg_typ type1 type2 >>= fun e -> eq_type e t
     in
-    (match o with
+    (match op with
      | Bin_sum | Bin_divide | Bin_modulus | Bin_multiply | Bin_subtract ->
        compare_operation_typ x y (Ctype Type_int) *> return (Ctype Type_int)
      | Bin_less | Bin_greater | Bin_greater_equal | Bin_less_equal ->
@@ -105,10 +113,15 @@ let rec retrieve_type_expr caf = function
         | _ -> return (Ctuple y))
      | _ -> fail (Type_check_error Check_failed))
   | Expr_chan_receive x -> retrieve_type_expr caf x
-  | Expr_index (x, y) ->
-    if retrieve_type_expr caf y = return (Ctype Type_int)
-    then retrieve_type_expr caf x
-    else fail (Type_check_error (Mismatched_types "Array index type mismatched"))
+  | Expr_index (array, index) when retrieve_type_expr caf index == return (Ctype Type_int)
+    ->
+    retrieve_type_expr caf array
+    >>= (function
+     | Ctype (Type_array (_, t)) -> return (Ctype t)
+     | _ ->
+       fail (Type_check_error (Mismatched_types "Non-array type in array index call")))
+  | Expr_index (_, _) ->
+    fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
 let retrieve_idents_from_long_var_decl caf env decl =
@@ -124,39 +137,32 @@ let retrieve_idents_from_long_var_decl caf env decl =
   in
   match decl with
   | Long_decl_no_init (k, x, y) -> iter (env_r (Ctype k)) (x :: y)
-  | Long_decl_mult_init (k, (x, z), y) ->
-    (match k with
-     | Some k ->
-       iter
-         ((fun k (i, x) ->
-            (retrieve_type_expr caf x >>= fun x -> check_eq x k) *> env_r k i)
-            (Ctype k))
-         ((x, z) :: y)
-     | None ->
-       iter
-         (fun (x, z) -> retrieve_type_expr caf z >>= env_l x)
-         (List.combine (x :: retrieve_paris_first y) (z :: retrieve_paris_second y)))
-  | Long_decl_one_init (k, x, y, z, l) ->
-    (match k with
-     | Some k ->
-       if retrieve_type_expr caf (Expr_call l) != return (Ctype k)
-       then
-         fail
-           (Type_check_error
-              (Mismatched_types (Printf.sprintf "%s" (print_type (Ctype k)))))
-       else iter (env_r (Ctype k)) (x :: y :: z)
-     | None ->
-       retrieve_type_expr caf (Expr_call l)
-       >>= fun x1 ->
-       (match x1 with
-        | Ctype _ ->
-          fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
-        | Ctuple tl ->
-          if List.length tl == List.length (x :: y :: z)
-          then iter2 (fun x y -> env_l x y) (x :: y :: z) (List.map (fun x -> Ctype x) tl)
-          else
-            fail (Type_check_error (Mismatched_types "multiple return types mismatched")))
-       *> return ())
+  | Long_decl_mult_init (Some k, (x, z), y) ->
+    iter
+      ((fun k (i, x) -> (retrieve_type_expr caf x >>= fun x -> check_eq x k) *> env_r k i)
+         (Ctype k))
+      ((x, z) :: y)
+  | Long_decl_mult_init (None, (x, z), y) ->
+    iter
+      (fun (x, z) -> retrieve_type_expr caf z >>= env_l x)
+      (List.combine (x :: retrieve_pairs_first y) (z :: retrieve_pairs_second y))
+  | Long_decl_one_init (Some k, x, y, z, l) ->
+    if retrieve_type_expr caf (Expr_call l) != return (Ctype k)
+    then
+      fail
+        (Type_check_error (Mismatched_types (Printf.sprintf "%s" (print_type (Ctype k)))))
+    else iter (env_r (Ctype k)) (x :: y :: z)
+  | Long_decl_one_init (None, x, y, z, l) ->
+    retrieve_type_expr caf (Expr_call l)
+    >>= (function
+     | Ctype _ ->
+       fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
+     | Ctuple tl ->
+       if List.length tl == List.length (x :: y :: z)
+       then iter2 (fun x y -> env_l x y) (x :: y :: z) (List.map (fun x -> Ctype x) tl)
+       else
+         fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
+         *> return ())
 ;;
 
 (*iter
@@ -167,7 +173,7 @@ let retrieve_idents_from_short_var_decl caf = function
   | Short_decl_mult_init ((x, z), y) ->
     iter
       (fun (x, z) -> retrieve_type_expr caf z >>= save_local_ident_l x)
-      (List.combine (x :: retrieve_paris_first y) (z :: retrieve_paris_second y))
+      (List.combine (x :: retrieve_pairs_first y) (z :: retrieve_pairs_second y))
   | Short_decl_one_init (x, y, z, l) ->
     iter
       (fun (x, z) -> retrieve_type_expr caf z >>= save_local_ident_l x)
@@ -178,46 +184,60 @@ let check_func_call caf (x, y) =
   retrieve_type_expr caf x *> map (retrieve_type_expr caf) y *> return ()
 ;;
 
-let rec check_lvalue caf = function
-  | Lvalue_ident x -> retrieve_ident x
-  | Lvalue_array_index (x, y) -> check_lvalue caf x *> retrieve_type_expr caf y
+let rec retrieve_lvalue caf = function
+  | Lvalue_ident id -> retrieve_ident id
+  | Lvalue_array_index (Lvalue_ident array, index)
+    when retrieve_type_expr caf index == return (Ctype Type_int) ->
+    retrieve_ident array
+    >>= (function
+     | Ctype (Type_array (_, t)) -> return (Ctype t)
+     | _ ->
+       fail (Type_check_error (Mismatched_types "Non-array type in array index call")))
+  | Lvalue_array_index (lvalue_array_index, index)
+    when retrieve_type_expr caf index == return (Ctype Type_int) ->
+    retrieve_lvalue caf lvalue_array_index
+  | Lvalue_array_index (_, _) ->
+    fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
 let check_assign caf = function
   | Assign_mult_expr (x, z) ->
     iter
       (fun (x, y) ->
-        check_lvalue caf x
+        retrieve_lvalue caf x
         >>= fun type1 -> retrieve_type_expr caf y >>= fun type2 -> check_eq type1 type2)
       (x :: z)
   | Assign_one_expr (x, y, _, w) ->
-    check_lvalue caf x *> check_lvalue caf y *> check_func_call caf w
+    retrieve_lvalue caf x
+    *> retrieve_lvalue caf y
+    *> check_func_call caf w (* кажется неправильно *)
 ;;
 
 let check_init caf = function
-  | Some x ->
-    (match x with
-     | Init_assign x -> check_assign caf x
-     | Init_call x -> check_func_call caf x
-     | Init_decl _ -> return () (*доделать*)
-     | Init_decr x -> seek_ident x
-     | Init_incr x -> seek_ident x
-     | Init_receive x -> retrieve_type_expr caf x *> return ()
-     | Init_send (x, y) -> seek_ident x *> retrieve_type_expr caf y *> return ())
+  | Some (Init_assign x) -> check_assign caf x
+  | Some (Init_call x) -> check_func_call caf x
+  | Some (Init_decl _) -> return () (*доделать*)
+  | Some (Init_decr x) -> retrieve_ident x >>= fun t -> check_eq t (Ctype Type_int)
+  | Some (Init_incr x) -> retrieve_ident x >>= fun t -> check_eq t (Ctype Type_int)
+  | Some (Init_receive x) ->
+    retrieve_type_expr caf x *> return () (* кажется неправильно *)
+  | Some (Init_send (x, y)) -> seek_ident x *> retrieve_type_expr caf y *> return ()
   | None -> return ()
 ;;
 
 let rec check_stmt = function
   | Stmt_long_var_decl x -> retrieve_idents_from_long_var_decl check_stmt Loc x
   | Stmt_short_var_decl x -> retrieve_idents_from_short_var_decl check_stmt x
-  | Stmt_incr x -> retrieve_ident x >>= fun e -> check_eq e (Ctype Type_int)
-  | Stmt_decr x -> retrieve_ident x >>= fun e -> check_eq e (Ctype Type_int)
+  | Stmt_incr x -> retrieve_ident x >>= fun t -> check_eq t (Ctype Type_int)
+  | Stmt_decr x -> retrieve_ident x >>= fun t -> check_eq t (Ctype Type_int)
   | Stmt_assign x -> check_assign check_stmt x
-  | Stmt_call x -> retrieve_type_expr check_stmt (Expr_call x) *> return ()
+  | Stmt_call x -> check_func_call check_stmt x
   | Stmt_defer x -> check_func_call check_stmt x
   | Stmt_go x -> check_func_call check_stmt x
   | Stmt_chan_send (x, y) -> seek_ident x *> retrieve_type_expr check_stmt y *> return ()
-  | Stmt_block x -> iter check_stmt x
+  | Stmt_block x ->
+    iter check_stmt x
+    (* Тут (и в ифе с фором) по идее надо создавать новую мапу, внутри блока свои локальные переменные *)
   | Stmt_break -> return ()
   | Stmt_chan_receive x -> retrieve_type_expr check_stmt x *> return ()
   | Stmt_continue -> return ()
@@ -263,9 +283,9 @@ let check_top_decl = function
   | Decl_var x -> retrieve_idents_from_long_var_decl check_stmt Glob x
 ;;
 
-let type_check code =
+let type_check file =
   run
-    (check_main code *> iter check_top_decl_funcs code *> iter check_top_decl code)
+    (check_main file *> iter check_top_decl_funcs file *> iter check_top_decl file)
     (MapIdent.empty, [ MapIdent.empty ], None)
 ;;
 
