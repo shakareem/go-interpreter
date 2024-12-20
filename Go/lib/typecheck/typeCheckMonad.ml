@@ -32,10 +32,6 @@ module CheckMonad = struct
 
   type 'a t = (type_check, 'a) BaseMonad.t
 
-  type env_t =
-    | Loc
-    | Glob
-
   let print_type = function
     | Ctype x -> PpType.print_type x
     | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map PpType.print_type x))

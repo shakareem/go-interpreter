@@ -95,7 +95,39 @@ let rec retrieve_expr caf = function
        compare_operation_typ left right (Ctype Type_bool) *> return (Ctype Type_bool)
      | Bin_equal | Bin_not_equal -> compare_arg_typ left right *> return (Ctype Type_bool))
   | Expr_call (func, args) ->
-    map (retrieve_expr caf) args
+    let ftype =
+      retrieve_expr caf func
+      >>= function
+      | Ctype (Type_func (lst, _)) -> map (fun x -> return (Ctype x)) lst
+      | _ -> fail (Type_check_error (Mismatched_types "Expected func type here"))
+    in
+    let argtype =
+      match args with
+      | [ x ] ->
+        retrieve_expr caf x
+        >>= (function
+         | Ctuple x -> map (fun x1 -> return (Ctype x1)) x
+         | x -> return [ x ])
+      | lst ->
+        map
+          (fun x ->
+            retrieve_expr caf x
+            >>= function
+            | Ctuple _ ->
+              fail (Type_check_error (Mismatched_types "Expected func type here"))
+            | x -> return x)
+          lst
+    in
+    (argtype
+     >>= (fun at -> ftype >>= fun ft -> return (List.length ft = List.length at))
+     >>= fun x ->
+     match x with
+     | true ->
+       ftype
+       >>= fun x -> iter2 (fun arg typ -> retrieve_expr caf arg >>= check_eq typ) args x
+     | false -> fail (Type_check_error (Mismatched_types "Number of arg given mismached"))
+    )
+    *> map (retrieve_expr caf) args
     *> (retrieve_expr caf) func (* кажется нет проверки того, что аргументы правильные *)
     >>= (function
      | Ctype (Type_func (_, fst :: snd :: tl)) -> return (Ctuple (fst :: snd :: tl))
@@ -258,7 +290,6 @@ let rec check_stmt = function
     *> delete_env
 ;;
 
-(* непон зачем тут две функции *)
 let check_top_decl_funcs = function
   | Decl_func (id, args_returns_and_body) ->
     save_global_ident id (retrieve_anon_func args_returns_and_body)
@@ -273,7 +304,7 @@ let check_top_decl = function
 let type_check file =
   run
     (check_main file *> iter check_top_decl_funcs file *> iter check_top_decl file)
-    (MapIdent.empty, [ MapIdent.empty ], None)
+    (MapIdent.empty, [], None)
 ;;
 
 let pp ast =
