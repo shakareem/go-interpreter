@@ -96,14 +96,15 @@ let rec retrieve_expr caf = function
        compare_operation_typ left right (Ctype Type_bool) *> return (Ctype Type_bool)
      | Bin_equal | Bin_not_equal -> compare_arg_typ left right *> return (Ctype Type_bool))
   | Expr_call (func, args) ->
-    map (retrieve_expr caf) args *> (retrieve_expr caf) func
+    map (retrieve_expr caf) args
+    *> (retrieve_expr caf) func (* кажется нет проверки того, что аргументы правильные *)
     >>= (function
      | Ctype (Type_func (_, fst :: snd :: tl)) -> return (Ctuple (fst :: snd :: tl))
      | Ctype (Type_func (_, hd :: _)) -> return (Ctype hd)
      | _ ->
        fail (Type_check_error (Mismatched_types "Function without returns in expression")))
   | Expr_chan_receive x -> retrieve_expr caf x (* ошибка *)
-  | Expr_index (array, index) when retrieve_expr caf index == return (Ctype Type_int) ->
+  | Expr_index (array, index) when retrieve_expr caf index = return (Ctype Type_int) ->
     retrieve_expr caf array
     >>= (function
      | Ctype (Type_array (_, t)) -> return (Ctype t)
@@ -135,23 +136,23 @@ let retrieve_idents_from_long_var_decl caf env decl =
   | Long_decl_mult_init (None, hd, tl) ->
     iter (fun (id, expr) -> retrieve_expr caf expr >>= env_l id) (hd :: tl)
   | Long_decl_one_init (Some t, fst, snd, tl, call)
-    when retrieve_expr caf (Expr_call call) == return (Ctype t) (* вроде ошибка *) ->
+    when retrieve_expr caf (Expr_call call)
+         = return (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> t))) ->
     iter (env_r (Ctype t)) (fst :: snd :: tl)
   | Long_decl_one_init (None, fst, snd, tl, call) ->
     retrieve_expr caf (Expr_call call)
     >>= (function
      | Ctype _ ->
-       fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
-     | Ctuple types ->
-       if List.length types == List.length (fst :: snd :: tl)
-       then
-         iter2
-           (fun x y -> env_l x y)
-           (fst :: snd :: tl)
-           (List.map (fun x -> Ctype x) types)
-       else
-         fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
-         *> return ())
+       fail
+         (Type_check_error
+            (Mismatched_types "function returns only one element in multiple var decl"))
+     | Ctuple types when List.length types = List.length (fst :: snd :: tl) ->
+       iter2 (fun x y -> env_l x y) (fst :: snd :: tl) (List.map (fun x -> Ctype x) types)
+     | Ctuple _ ->
+       fail
+         (Type_check_error
+            (Mismatched_types
+               "function returns wrong number of elements in multiple var decl")))
   | Long_decl_one_init (Some _, _, _, _, _) ->
     fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
 ;;
@@ -178,14 +179,14 @@ let check_func_call caf (func, args) =
 let rec retrieve_lvalue caf = function
   | Lvalue_ident id -> retrieve_ident id
   | Lvalue_array_index (Lvalue_ident array, index)
-    when retrieve_expr caf index == return (Ctype Type_int) ->
+    when retrieve_expr caf index = return (Ctype Type_int) ->
     retrieve_ident array
     >>= (function
      | Ctype (Type_array (_, t)) -> return (Ctype t)
      | _ ->
        fail (Type_check_error (Mismatched_types "Non-array type in array index call")))
   | Lvalue_array_index (lvalue_array_index, index)
-    when retrieve_expr caf index == return (Ctype Type_int) ->
+    when retrieve_expr caf index = return (Ctype Type_int) ->
     retrieve_lvalue caf lvalue_array_index
   | Lvalue_array_index (_, _) ->
     fail (Type_check_error (Mismatched_types "Array index is not int"))
