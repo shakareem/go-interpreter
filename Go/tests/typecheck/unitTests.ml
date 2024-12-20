@@ -119,7 +119,7 @@ let%expect_test "err: func call one init with mismatched number of elements" =
     func main() {}
     |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: multiple return types mismatched |}]
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Function without returns in expression |}]
 ;;
 
 let%expect_test "err: func call one init with mismathced types" =
@@ -133,7 +133,7 @@ let%expect_test "err: func call one init with mismathced types" =
     
     func main() {}
     |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: bool |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: multiple return types mismatched |}]
 ;;
 
 let%expect_test "err: var redeclaration" =

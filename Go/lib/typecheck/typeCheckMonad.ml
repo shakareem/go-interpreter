@@ -156,7 +156,7 @@ module CheckMonad = struct
               (Printf.sprintf "%s is redeclared in %s" ident (print_type t))))
   ;;
 
-  let read_ident ident =
+  let retrieve_ident ident =
     read_local_ident ident
     >>= function
     | Some x -> return x
