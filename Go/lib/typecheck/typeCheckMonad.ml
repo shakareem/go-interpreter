@@ -112,18 +112,7 @@ module CheckMonad = struct
     read_global >>= fun global -> write_global (MapIdent.add el_ident el_type global)
   ;;
 
-  let save_local_ident_r env ident =
-    seek_local_definition_ident ident
-    >>= function
-    | None -> write_local_ident env ident
-    | Some _ ->
-      fail
-        (Type_check_error
-           (Multiple_declaration
-              (Printf.sprintf "%s is redeclared in %s" ident (print_type env))))
-  ;;
-
-  let save_local_ident_l env ident =
+  let save_local_ident env ident =
     seek_local_definition_ident env
     >>= function
     | None -> write_local_ident ident env
@@ -134,18 +123,7 @@ module CheckMonad = struct
               (Printf.sprintf "%s is redeclared in %s" env (print_type ident))))
   ;;
 
-  let save_global_ident_r ident t =
-    read_global_ident t
-    >>= function
-    | None -> write_global_ident ident t
-    | Some _ ->
-      fail
-        (Type_check_error
-           (Multiple_declaration
-              (Printf.sprintf "%s is redeclared in %s" t (print_type ident))))
-  ;;
-
-  let save_global_ident_l ident t =
+  let save_global_ident ident t =
     read_global_ident ident
     >>= function
     | None -> write_global_ident t ident

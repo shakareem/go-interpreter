@@ -7,8 +7,8 @@ open TypeCheckMonad.CheckMonad
 open Errors
 open Ast
 
-let retrieve_pairs_first args = List.map (fun (fst, _) -> fst) args
-let retrieve_pairs_second args = List.map (fun (_, snd) -> snd) args
+let lpf args = List.map (fun (fst, _) -> fst) args
+let lps args = List.map (fun (_, snd) -> snd) args
 
 let find_func name code =
   let func_name = function
@@ -19,16 +19,15 @@ let find_func name code =
 ;;
 
 let retrieve_anon_func anon_func =
-  let args = retrieve_pairs_second anon_func.args in
+  let args = lps anon_func.args in
   match anon_func.returns with
   | Some (Only_types (hd, tl)) -> Ctype (Type_func (args, hd :: tl))
-  | Some (Ident_and_types (hd, tl)) ->
-    Ctype (Type_func (args, retrieve_pairs_second (hd :: tl)))
+  | Some (Ident_and_types (hd, tl)) -> Ctype (Type_func (args, lps (hd :: tl)))
   | None -> Ctype (Type_func (args, []))
 ;;
 
 let check_anon_func anon_func cstmt =
-  let save_args = iter (fun (id, t) -> save_local_ident_l id (Ctype t)) anon_func.args in
+  let save_args = iter (fun (id, t) -> save_local_ident id (Ctype t)) anon_func.args in
   write_env
   *> save_args
   *> iter (fun stmt -> cstmt stmt) anon_func.body
@@ -103,7 +102,12 @@ let rec retrieve_expr caf = function
      | Ctype (Type_func (_, hd :: _)) -> return (Ctype hd)
      | _ ->
        fail (Type_check_error (Mismatched_types "Function without returns in expression")))
-  | Expr_chan_receive x -> retrieve_expr caf x (* ошибка *)
+  | Expr_chan_receive x ->
+    retrieve_expr caf x
+    >>= fun x ->
+    (match x with
+     | Ctype (Type_chan (_, y)) -> return (Ctype y)
+     | _ -> fail (Type_check_error (Mismatched_types "Chan type mismatch")))
   | Expr_index (array, index) when retrieve_expr caf index = return (Ctype Type_int) ->
     retrieve_expr caf array
     >>= (function
@@ -114,31 +118,22 @@ let rec retrieve_expr caf = function
     fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
-let retrieve_idents_from_long_var_decl caf env decl =
-  let env_r =
-    match env with
-    | Loc -> save_local_ident_r
-    | Glob -> save_global_ident_r
-  in
-  let env_l =
-    match env with
-    | Loc -> save_local_ident_l
-    | Glob -> save_global_ident_l
-  in
+let check_long_var_decl caf env decl =
   match decl with
-  | Long_decl_no_init (t, hd, tl) -> iter (env_r (Ctype t)) (hd :: tl)
+  | Long_decl_no_init (t, hd, tl) -> iter (fun i -> env i (Ctype t)) (hd :: tl)
   | Long_decl_mult_init (Some t, hd, tl) ->
     iter
       ((fun k (id, expr) ->
-         (retrieve_expr caf expr >>= fun x -> check_eq x k) *> env_r k id)
+         (retrieve_expr caf expr >>= fun x -> check_eq x k) *> env id k)
          (Ctype t))
       (hd :: tl)
   | Long_decl_mult_init (None, hd, tl) ->
-    iter (fun (id, expr) -> retrieve_expr caf expr >>= env_l id) (hd :: tl)
-  | Long_decl_one_init (Some t, fst, snd, tl, call)
-    when retrieve_expr caf (Expr_call call)
-         = return (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> t))) ->
-    iter (env_r (Ctype t)) (fst :: snd :: tl)
+    iter (fun (id, expr) -> retrieve_expr caf expr >>= env id) (hd :: tl)
+  | Long_decl_one_init (Some t, fst, snd, tl, call) ->
+    retrieve_expr caf (Expr_call call)
+    >>= fun x ->
+    check_eq x (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> t)))
+    *> iter (fun i -> env i (Ctype t)) (fst :: snd :: tl)
   | Long_decl_one_init (None, fst, snd, tl, call) ->
     retrieve_expr caf (Expr_call call)
     >>= (function
@@ -147,26 +142,20 @@ let retrieve_idents_from_long_var_decl caf env decl =
          (Type_check_error
             (Mismatched_types "function returns only one element in multiple var decl"))
      | Ctuple types when List.length types = List.length (fst :: snd :: tl) ->
-       iter2 (fun x y -> env_l x y) (fst :: snd :: tl) (List.map (fun x -> Ctype x) types)
+       iter2 (fun x y -> env x y) (fst :: snd :: tl) (List.map (fun x -> Ctype x) types)
      | Ctuple _ ->
        fail
          (Type_check_error
             (Mismatched_types
                "function returns wrong number of elements in multiple var decl")))
-  | Long_decl_one_init (Some _, _, _, _, _) ->
-    fail (Type_check_error (Mismatched_types "multiple return types mismatched"))
 ;;
 
-(*iter
-  (fun (x, z) -> retrieve_type_expr z >>= env_l x)
-  (List.combine (x :: y :: z) (List.map (fun _ -> Expr_call l) (x :: y :: z))))*)
-
-let retrieve_idents_from_short_var_decl caf = function
+let check_short_var_decl caf = function
   | Short_decl_mult_init (hd, tl) ->
-    iter (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident_l id) (hd :: tl)
+    iter (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident id) (hd :: tl)
   | Short_decl_one_init (fst, snd, tl, call) ->
     iter
-      (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident_l id)
+      (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident id)
       (List.combine
          (fst :: snd :: tl)
          (List.map (fun _ -> Expr_call call) (fst :: snd :: tl)))
@@ -208,7 +197,7 @@ let check_assign caf = function
 let check_init caf = function
   | Some (Init_assign assign) -> check_assign caf assign
   | Some (Init_call call) -> check_func_call caf call
-  | Some (Init_decl _) -> return () (*доделать*)
+  | Some (Init_decl x) -> check_short_var_decl caf x *> return ()
   | Some (Init_decr id) -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Some (Init_incr id) -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Some (Init_receive chan) ->
@@ -219,9 +208,8 @@ let check_init caf = function
 
 let rec check_stmt = function
   | Stmt_long_var_decl long_decl ->
-    retrieve_idents_from_long_var_decl check_stmt Loc long_decl
-  | Stmt_short_var_decl short_decl ->
-    retrieve_idents_from_short_var_decl check_stmt short_decl
+    check_long_var_decl check_stmt save_local_ident long_decl
+  | Stmt_short_var_decl short_decl -> check_short_var_decl check_stmt short_decl
   | Stmt_incr id -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Stmt_decr id -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Stmt_assign assign -> check_assign check_stmt assign
@@ -230,9 +218,7 @@ let rec check_stmt = function
   | Stmt_go call -> check_func_call check_stmt call
   | Stmt_chan_send (id, expr) ->
     seek_ident id *> retrieve_expr check_stmt expr *> return ()
-  | Stmt_block block ->
-    iter check_stmt block
-    (* Тут (и в ифе с фором) по идее надо создавать новую мапу, внутри блока свои локальные переменные *)
+  | Stmt_block block -> write_env *> iter check_stmt block *> delete_env
   | Stmt_break -> return ()
   | Stmt_chan_receive chan -> retrieve_expr check_stmt chan *> return ()
   | Stmt_continue -> return ()
@@ -251,34 +237,37 @@ let rec check_stmt = function
     )
     *> return ()
   | Stmt_if if' ->
-    (* надо создавать мапу *)
-    check_init check_stmt if'.init
-    *> retrieve_expr check_stmt if'.cond
+    write_env *> check_init check_stmt if'.init *> retrieve_expr check_stmt if'.cond
+    >>= fun x ->
+    check_eq (Ctype Type_bool) x
     *> iter check_stmt if'.if_body
+    *> delete_env
     *>
       (match if'.else_body with
       | Some (Else_block block) -> iter check_stmt block
       | Some (Else_if if') -> check_stmt (Stmt_if if')
       | None -> return ())
   | Stmt_for { init; cond; post; body } ->
-    check_init check_stmt init (* надо создавать мапу *)
+    write_env
+    *> check_init check_stmt init
     *> (match cond with
-      | Some x -> retrieve_expr check_stmt x *> return ()
+      | Some x -> retrieve_expr check_stmt x >>= fun x -> check_eq (Ctype Type_bool) x
       | None -> return ())
     *> check_init check_stmt post
     *> iter check_stmt body
+    *> delete_env
 ;;
 
 (* непон зачем тут две функции *)
 let check_top_decl_funcs = function
   | Decl_func (id, args_returns_and_body) ->
-    save_global_ident_r (retrieve_anon_func args_returns_and_body) id
+    save_global_ident id (retrieve_anon_func args_returns_and_body)
   | Decl_var _ -> return ()
 ;;
 
 let check_top_decl = function
   | Decl_func (x, y) -> write_func_name x *> check_anon_func y check_stmt *> return ()
-  | Decl_var x -> retrieve_idents_from_long_var_decl check_stmt Glob x
+  | Decl_var x -> check_long_var_decl check_stmt save_global_ident x
 ;;
 
 let type_check file =

@@ -133,7 +133,8 @@ let%expect_test "err: func call one init with mismathced types" =
     
     func main() {}
     |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: multiple return types mismatched |}]
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in binoper |}]
 ;;
 
 let%expect_test "err: var redeclaration" =
@@ -141,10 +142,10 @@ let%expect_test "err: var redeclaration" =
     var a = 0
 
     var a = ""
-    s
+    
     func main() {}
     |};
-  [%expect {| : syntax error |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in string |}]
 ;;
 
 (********** top func decl **********)
