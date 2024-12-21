@@ -46,9 +46,6 @@ module CheckMonad : sig
 
   val map : ('a -> ('st, 'b) BaseMonad.t) -> 'a list -> ('st, 'b list) BaseMonad.t
   val run : ('st, 'a) BaseMonad.t -> 'st -> 'st * ('a, Errors.error) Result.t
-
-  type 'a t = (type_check, 'a) BaseMonad.t
-
   val rpf : ('a * 'b) list -> 'a list
   val rps : ('a * 'b) list -> 'b list
   val seek_local_definition_ident : MapIdent.key -> (type_check, ctype option) BaseMonad.t
@@ -58,7 +55,7 @@ module CheckMonad : sig
   val save_local_ident : MapIdent.key -> ctype -> (type_check, unit) BaseMonad.t
   val save_global_ident : MapIdent.key -> ctype -> (type_check, unit) BaseMonad.t
   val retrieve_ident : MapIdent.key -> (type_check, ctype) BaseMonad.t
-  val get_func_return_type : ctype t
+  val get_func_return_type : (type_check, ctype) BaseMonad.t
   val write_env : (type_check, unit) BaseMonad.t
   val delete_env : (type_check, unit) BaseMonad.t
 end

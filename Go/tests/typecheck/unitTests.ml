@@ -381,6 +381,21 @@ let%expect_test "err: undefined var inc" =
   [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: a2 is not defined |}]
 ;;
 
+let%expect_test "ok: var decl after it's use in code" =
+  pp
+    {|
+  
+    func main() {}
+
+    func foo(a1 int, c int, b int) bool {
+        x++
+    }  
+    var x int
+
+    |};
+  [%expect {| CORRECT |}]
+;;
+
 let%expect_test "err: undefined func call" =
   pp
     {|
