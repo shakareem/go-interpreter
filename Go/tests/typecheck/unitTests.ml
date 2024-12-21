@@ -50,7 +50,7 @@ let%expect_test "err: main with args" =
 let%expect_test "err: no main" =
   pp {|
   var a int
-  func foo(a, a, b int) {}
+  func foo(b int) {}
   |};
   [%expect {| ERROR WHILE TYPECHECK WITH Incorrect main error: main func not found |}]
 ;;

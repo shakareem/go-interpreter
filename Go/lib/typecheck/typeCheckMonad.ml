@@ -20,8 +20,16 @@ type ctype =
   | Ctuple of type' list
 [@@deriving show { with_path = false }, eq]
 
+(*MapIdent is used to map ident and it's type in global space*)
 type global_env = ctype MapIdent.t
+
+(*list of MapIdent is used to map ident and it's type in local space.
+  Add MapIdent if you enter in if/for body or func literal and then delete it after checking block of statements
+  If we didn't find ident in Map, we will seek it in next 'till we find it or not find it even in global space
+  and fail with undefined ident error*)
 type local_env = ctype MapIdent.t list
+
+(*list of ctype is used to check returns in nested functions*)
 type current_func = ctype list
 type type_check = global_env * local_env * current_func
 
@@ -132,19 +140,6 @@ module CheckMonad = struct
       read_global_ident ident
       >>= (function
        | Some x -> return x
-       | None ->
-         fail
-           (Type_check_error (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
-  ;;
-
-  let seek_ident ident =
-    read_local_ident ident
-    >>= function
-    | Some _ -> return ()
-    | None ->
-      read_global_ident ident
-      >>= (function
-       | Some _ -> return ()
        | None ->
          fail
            (Type_check_error (Undefined_ident (Printf.sprintf "%s is not defined" ident))))

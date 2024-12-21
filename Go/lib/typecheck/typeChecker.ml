@@ -10,15 +10,7 @@ open Ast
 let lpf args = List.map (fun (fst, _) -> fst) args
 let lps args = List.map (fun (_, snd) -> snd) args
 
-let find_func name code =
-  let func_name = function
-    | Decl_func (func_name, _) -> func_name
-    | Decl_var _ -> ""
-  in
-  Stdlib.List.find_opt (fun func -> String.equal (func_name func) name) code
-;;
-
-let retrieve_anon_func anon_func =
+let get_anon_func_type anon_func =
   let args = lps anon_func.args in
   match anon_func.returns with
   | Some (hd, tl) -> Ctype (Type_func (args, hd :: tl))
@@ -36,7 +28,7 @@ let check_anon_func anon_func cstmt =
   *> iter (fun stmt -> cstmt stmt) anon_func.body
   *> delete_func
   *> delete_env
-  *> return (retrieve_anon_func anon_func)
+  *> return (get_anon_func_type anon_func)
 ;;
 
 let retrieve_const caf = function
@@ -46,10 +38,11 @@ let retrieve_const caf = function
   | Const_func anon_func -> check_anon_func anon_func caf
 ;;
 
-let check_main file =
-  match find_func "main" file with
-  | Some (Decl_func (_, { args = []; returns = None; body = _ })) -> return ()
-  | Some (Decl_func _) ->
+let check_main =
+  read_global_ident "main"
+  >>= function
+  | Some (Ctype (Type_func ([], []))) -> return ()
+  | Some (Ctype (Type_func _)) ->
     fail
       (Type_check_error
          (Incorrect_main
@@ -113,12 +106,9 @@ let rec retrieve_expr caf = function
   | Expr_ident id -> retrieve_ident id
   | Expr_bin_oper (op, left, right) ->
     let compare_arg_typ type1 type2 =
-      retrieve_expr caf type1
-      >>= fun type1 -> retrieve_expr caf type2 >>= fun type2 -> eq_type type1 type2
+      retrieve_expr caf type1 >>= fun type1 -> retrieve_expr caf type2 >>= eq_type type1
     in
-    let compare_operation_typ type1 type2 t =
-      compare_arg_typ type1 type2 >>= fun e -> eq_type e t
-    in
+    let compare_operation_typ type1 type2 t = compare_arg_typ type1 type2 >>= eq_type t in
     (match op with
      | Bin_sum | Bin_divide | Bin_modulus | Bin_multiply | Bin_subtract ->
        compare_operation_typ left right (Ctype Type_int) *> return (Ctype Type_int)
@@ -229,33 +219,31 @@ let check_assign caf = function
     iter
       (fun (lvalue, expr) ->
         retrieve_lvalue caf lvalue
-        >>= fun type1 -> retrieve_expr caf expr >>= fun type2 -> check_eq type1 type2)
+        >>= fun type1 -> retrieve_expr caf expr >>= check_eq type1)
       (hd :: tl)
   | Assign_one_expr (l1, l2, ls, w) ->
     retrieve_expr caf (Expr_call w)
     >>= (function
-     | Ctype _ ->
-       fail (Type_check_error (Mismatched_types "Multiple return assign failed"))
+     | Ctype _ -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))
      | Ctuple x ->
        (match List.length x = List.length (l1 :: l2 :: ls) with
         | true ->
           iter2
-            (fun x y -> retrieve_lvalue caf y >>= fun t -> check_eq (Ctype x) t)
+            (fun x y -> retrieve_lvalue caf y >>= check_eq (Ctype x))
             x
             (l1 :: l2 :: ls)
-        | false ->
-          fail (Type_check_error (Mismatched_types "Multiple return assign failed"))))
+        | false -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))))
 ;;
 
 let check_init caf = function
   | Some (Init_assign assign) -> check_assign caf assign
   | Some (Init_call call) -> check_func_call (retrieve_expr caf) call
   | Some (Init_decl x) -> check_short_var_decl caf x *> return ()
-  | Some (Init_decr id) -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
-  | Some (Init_incr id) -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
-  | Some (Init_receive chan) ->
-    retrieve_expr caf chan *> return () (* кажется неправильно *)
-  | Some (Init_send (id, expr)) -> seek_ident id *> retrieve_expr caf expr *> return ()
+  | Some (Init_decr id) -> retrieve_ident id >>= check_eq (Ctype Type_int)
+  | Some (Init_incr id) -> retrieve_ident id >>= check_eq (Ctype Type_int)
+  | Some (Init_receive chan) -> retrieve_expr caf chan *> return ()
+  | Some (Init_send (id, expr)) ->
+    retrieve_ident id *> retrieve_expr caf expr *> return ()
   | None -> return ()
 ;;
 
@@ -263,8 +251,8 @@ let rec check_stmt = function
   | Stmt_long_var_decl long_decl ->
     check_long_var_decl check_stmt save_local_ident long_decl
   | Stmt_short_var_decl short_decl -> check_short_var_decl check_stmt short_decl
-  | Stmt_incr id -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
-  | Stmt_decr id -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
+  | Stmt_incr id -> retrieve_ident id >>= check_eq (Ctype Type_int)
+  | Stmt_decr id -> retrieve_ident id >>= check_eq (Ctype Type_int)
   | Stmt_assign assign -> check_assign check_stmt assign
   | Stmt_call call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_defer call -> check_func_call (retrieve_expr check_stmt) call
@@ -289,8 +277,7 @@ let rec check_stmt = function
                | false ->
                  fail (Type_check_error (Mismatched_types "func return types mismatch")))
             | _ -> fail (Type_check_error Check_failed))
-     >>= iter (fun (x, y) -> retrieve_expr check_stmt x >>= fun type1 -> check_eq y type1)
-    )
+     >>= iter (fun (x, y) -> retrieve_expr check_stmt x >>= check_eq y))
     *> return ()
   | Stmt_if if' ->
     write_env *> check_init check_stmt if'.init *> retrieve_expr check_stmt if'.cond
@@ -307,7 +294,7 @@ let rec check_stmt = function
     write_env
     *> check_init check_stmt init
     *> (match cond with
-      | Some x -> retrieve_expr check_stmt x >>= fun x -> check_eq (Ctype Type_bool) x
+      | Some x -> retrieve_expr check_stmt x >>= check_eq (Ctype Type_bool)
       | None -> return ())
     *> check_init check_stmt post
     *> iter check_stmt body
@@ -316,7 +303,7 @@ let rec check_stmt = function
 
 let check_top_decl_funcs = function
   | Decl_func (id, args_returns_and_body) ->
-    save_global_ident id (retrieve_anon_func args_returns_and_body)
+    save_global_ident id (get_anon_func_type args_returns_and_body)
   | Decl_var _ -> return ()
 ;;
 
@@ -327,7 +314,7 @@ let check_top_decl = function
 
 let type_check file =
   run
-    (check_main file *> iter check_top_decl_funcs file *> iter check_top_decl file)
+    (iter check_top_decl_funcs file *> iter check_top_decl file *> check_main)
     (MapIdent.empty, [], [])
 ;;
 
