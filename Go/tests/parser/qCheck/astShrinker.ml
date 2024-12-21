@@ -45,25 +45,23 @@ let shrink_id_and_type id_and_t =
 ;;
 
 let shrink_anon_func shblock anon_func =
-  if anon_func = { args = []; returns = None; body = [] }
+  if anon_func = { args = []; returns = []; body = [] }
   then empty
   else
-    return { args = []; returns = None; body = [] }
+    return { args = []; returns = []; body = [] }
     <+>
     let { args; returns; body } = anon_func in
     (let* new_args = list ~shrink:shrink_id_and_type args in
      return { args = new_args; returns; body })
     <+> (let* new_returns =
            match returns with
-           | Some (first, hd :: tl) ->
-             let* new_types = list ~shrink:shrink_type (first :: hd :: tl) in
-             (match new_types with
-              | hd :: tl -> return (Some (hd, tl))
-              | [] -> return None)
-           | Some (type', []) ->
+           | [ type' ] ->
              let* new_type = shrink_type type' in
-             of_list [ None; Some (new_type, []) ]
-           | None -> empty
+             of_list [ []; [ new_type ] ]
+           | [] -> empty
+           | types ->
+             let* new_types = list ~shrink:shrink_type types in
+             return new_types
          in
          return { args; returns = new_returns; body })
     <+>
@@ -464,7 +462,7 @@ let rec shrink_block block = list ~shrink:(shrink_stmt shrink_block) block
 
 let shrink_func_decl decl =
   let ident, args_returns_and_body = decl in
-  return ("a", { args = []; returns = None; body = [] })
+  return ("a", { args = []; returns = []; body = [] })
   <+> (let* new_ident = shrink_ident ident in
        return (new_ident, args_returns_and_body))
   <+> let* new_args_returns_and_body =

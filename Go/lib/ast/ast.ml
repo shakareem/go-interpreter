@@ -74,7 +74,7 @@ and const =
 
 (** An anonymous functions such as:
     [func() {}],
-    [func(a, b int) (sum int) { sum = a + b; return }]
+    [func(a, b int) (int) { sum = a + b; return sum}]
     [func(s1 string, s2 string) [2]string { return [2]string{s1,s2} }] *)
 and anon_func =
   { args : (ident * type') list
@@ -84,8 +84,7 @@ and anon_func =
       Empty list means that function doesn't take any arguments.
       The second example will be processed at parsing
       as [func(a int, b int, c string) ...] *)
-  ; returns : (type' * type' list) option
-  (** None if function doesn't return anything. See return_values type *)
+  ; returns : type' list (** Function return types *)
   ; body : block (** function body *)
   }
 [@@deriving show { with_path = false }]

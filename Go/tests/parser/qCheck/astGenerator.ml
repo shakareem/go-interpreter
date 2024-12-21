@@ -89,18 +89,9 @@ let gen_const_array gexpr =
   return (Const_array (size, type', inits))
 ;;
 
-let gen_return_values =
-  let gen_only_types =
-    let* hd = gen_type in
-    let* tl = list4 gen_type in
-    return (hd, tl)
-  in
-  gen_only_types
-;;
-
 let gen_anon_func gblock =
   let* args = list4 (pair gen_ident gen_type) in
-  let* returns = option gen_return_values in
+  let* returns = list4 gen_type in
   let* body = gblock in
   return { args; returns; body }
 ;;

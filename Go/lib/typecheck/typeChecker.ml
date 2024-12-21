@@ -9,26 +9,17 @@ open Ast
 
 let lpf args = List.map (fun (fst, _) -> fst) args
 let lps args = List.map (fun (_, snd) -> snd) args
+let get_afunc_type afunc = Ctype (Type_func (lps afunc.args, afunc.returns))
 
-let get_anon_func_type anon_func =
-  let args = lps anon_func.args in
-  match anon_func.returns with
-  | Some (hd, tl) -> Ctype (Type_func (args, hd :: tl))
-  | None -> Ctype (Type_func (args, []))
-;;
-
-let check_anon_func anon_func cstmt =
-  let save_args = iter (fun (id, t) -> save_local_ident id (Ctype t)) anon_func.args in
+let check_anon_func afunc cstmt =
+  let save_args = iter (fun (id, t) -> save_local_ident id (Ctype t)) afunc.args in
   write_env
-  *> (match anon_func.returns with
-    | Some (t, []) -> write_func (Ctuple [ t ])
-    | Some (t, tl) -> write_func (Ctuple (t :: tl))
-    | None -> write_func (Ctuple []))
+  *> write_func (Ctuple afunc.returns)
   *> save_args
-  *> iter (fun stmt -> cstmt stmt) anon_func.body
+  *> iter (fun stmt -> cstmt stmt) afunc.body
   *> delete_func
   *> delete_env
-  *> return (get_anon_func_type anon_func)
+  *> return (get_afunc_type afunc)
 ;;
 
 let retrieve_const caf = function
@@ -128,8 +119,7 @@ let rec retrieve_expr caf = function
        fail (Type_check_error (Mismatched_types "Function without returns in expression")))
   | Expr_chan_receive x ->
     retrieve_expr caf x
-    >>= fun x ->
-    (match x with
+    >>= (function
      | Ctype (Type_chan (_, y)) -> return (Ctype y)
      | _ -> fail (Type_check_error (Mismatched_types "Chan type mismatch")))
   | Expr_index (array, index) when retrieve_expr caf index = return (Ctype Type_int) ->
@@ -142,8 +132,7 @@ let rec retrieve_expr caf = function
     fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
-let check_long_var_decl caf env decl =
-  match decl with
+let check_long_var_decl caf env = function
   | Long_decl_no_init (t, hd, tl) -> iter (fun i -> env i (Ctype t)) (hd :: tl)
   | Long_decl_mult_init (Some t, hd, tl) ->
     iter
@@ -303,7 +292,7 @@ let rec check_stmt = function
 
 let check_top_decl_funcs = function
   | Decl_func (id, args_returns_and_body) ->
-    save_global_ident id (get_anon_func_type args_returns_and_body)
+    save_global_ident id (get_afunc_type args_returns_and_body)
   | Decl_var _ -> return ()
 ;;
 
