@@ -21,16 +21,20 @@ let find_func name code =
 let retrieve_anon_func anon_func =
   let args = lps anon_func.args in
   match anon_func.returns with
-  | Some (Only_types (hd, tl)) -> Ctype (Type_func (args, hd :: tl))
-  | Some (Ident_and_types (hd, tl)) -> Ctype (Type_func (args, lps (hd :: tl)))
+  | Some (hd, tl) -> Ctype (Type_func (args, hd :: tl))
   | None -> Ctype (Type_func (args, []))
 ;;
 
 let check_anon_func anon_func cstmt =
   let save_args = iter (fun (id, t) -> save_local_ident id (Ctype t)) anon_func.args in
   write_env
+  *> (match anon_func.returns with
+    | Some (t, []) -> write_func (Ctuple [ t ])
+    | Some (t, tl) -> write_func (Ctuple (t :: tl))
+    | None -> write_func (Ctuple []))
   *> save_args
   *> iter (fun stmt -> cstmt stmt) anon_func.body
+  *> delete_func
   *> delete_env
   *> return (retrieve_anon_func anon_func)
 ;;
@@ -53,19 +57,16 @@ let check_main file =
   | _ -> fail (Type_check_error (Incorrect_main (Printf.sprintf "main func not found")))
 ;;
 
-(* В следующих трёх функциях надо что-то поменять, они используются не только в биноперах *)
-let eq e el1 el2 =
-  match e el1 el2 with
-  | true -> return el1
-  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in binoper"))
+let eq_type t1 t2 =
+  match equal_ctype t1 t2 with
+  | true -> return t1
+  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
 ;;
-
-let eq_type t1 t2 = eq equal_ctype t1 t2
 
 let check_eq t1 t2 =
   match equal_ctype t1 t2 with
   | true -> return ()
-  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in binoper"))
+  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
 ;;
 
 let check_func_call f (func, args) =
@@ -180,18 +181,31 @@ let check_long_var_decl caf env decl =
        fail
          (Type_check_error
             (Mismatched_types
-               "function returns wrong number of elements in multiple var decl")))
+               "function returns wrong number of elements in multiple var assign")))
 ;;
 
 let check_short_var_decl caf = function
   | Short_decl_mult_init (hd, tl) ->
     iter (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident id) (hd :: tl)
   | Short_decl_one_init (fst, snd, tl, call) ->
-    iter
-      (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident id)
-      (List.combine
-         (fst :: snd :: tl)
-         (List.map (fun _ -> Expr_call call) (fst :: snd :: tl)))
+    retrieve_expr caf (Expr_call call)
+    >>= (function
+     | Ctype _ ->
+       fail
+         (Type_check_error
+            (Mismatched_types
+               "function returns wrong number of elements in multiple var decl"))
+     | Ctuple x ->
+       (match List.length (fst :: snd :: tl) = List.length x with
+        | true ->
+          iter
+            (fun (id, tp) -> save_local_ident id (Ctype tp))
+            (List.combine (fst :: snd :: tl) x)
+        | false ->
+          fail
+            (Type_check_error
+               (Mismatched_types
+                  "function returns wrong number of elements in multiple var decl"))))
 ;;
 
 let rec retrieve_lvalue caf = function
@@ -217,10 +231,20 @@ let check_assign caf = function
         retrieve_lvalue caf lvalue
         >>= fun type1 -> retrieve_expr caf expr >>= fun type2 -> check_eq type1 type2)
       (hd :: tl)
-  | Assign_one_expr (x, y, _, w) ->
-    retrieve_lvalue caf x
-    *> retrieve_lvalue caf y
-    *> check_func_call (retrieve_expr caf) w (* кажется неправильно *)
+  | Assign_one_expr (l1, l2, ls, w) ->
+    retrieve_expr caf (Expr_call w)
+    >>= (function
+     | Ctype _ ->
+       fail (Type_check_error (Mismatched_types "Multiple return assign failed"))
+     | Ctuple x ->
+       (match List.length x = List.length (l1 :: l2 :: ls) with
+        | true ->
+          iter2
+            (fun x y -> retrieve_lvalue caf y >>= fun t -> check_eq (Ctype x) t)
+            x
+            (l1 :: l2 :: ls)
+        | false ->
+          fail (Type_check_error (Mismatched_types "Multiple return assign failed"))))
 ;;
 
 let check_init caf = function
@@ -246,19 +270,22 @@ let rec check_stmt = function
   | Stmt_defer call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_go call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_chan_send (id, expr) ->
-    seek_ident id *> retrieve_expr check_stmt expr *> return ()
+    retrieve_expr check_stmt expr
+    >>= fun x ->
+    retrieve_ident id
+    >>= (function
+     | Ctype (Type_chan (_, t)) -> check_eq x (Ctype t)
+     | _ -> fail (Type_check_error (Mismatched_types "expected chan type")) *> return ())
   | Stmt_block block -> write_env *> iter check_stmt block *> delete_env
   | Stmt_break -> return ()
   | Stmt_chan_receive chan -> retrieve_expr check_stmt chan *> return ()
   | Stmt_continue -> return ()
   | Stmt_return exprs ->
     (get_func_name
-     >>= retrieve_ident
      >>= (function
-            | Ctype (Type_func (_, return_types)) ->
-              (match List.length exprs = List.length return_types with
-               | true ->
-                 return (List.combine exprs (List.map (fun x -> Ctype x) return_types))
+            | Ctuple rtv ->
+              (match List.length exprs = List.length rtv with
+               | true -> return (List.combine exprs (List.map (fun x -> Ctype x) rtv))
                | false ->
                  fail (Type_check_error (Mismatched_types "func return types mismatch")))
             | _ -> fail (Type_check_error Check_failed))
@@ -294,14 +321,14 @@ let check_top_decl_funcs = function
 ;;
 
 let check_top_decl = function
-  | Decl_func (x, y) -> write_func_name x *> check_anon_func y check_stmt *> return ()
+  | Decl_func (_, y) -> check_anon_func y check_stmt *> return ()
   | Decl_var x -> check_long_var_decl check_stmt save_global_ident x
 ;;
 
 let type_check file =
   run
     (check_main file *> iter check_top_decl_funcs file *> iter check_top_decl file)
-    (MapIdent.empty, [], None)
+    (MapIdent.empty, [], [])
 ;;
 
 let pp ast =

@@ -93,14 +93,9 @@ let gen_return_values =
   let gen_only_types =
     let* hd = gen_type in
     let* tl = list4 gen_type in
-    return (Only_types (hd, tl))
+    return (hd, tl)
   in
-  let gen_ident_and_types =
-    let* hd = pair gen_ident gen_type in
-    let* tl = list4 (pair gen_ident gen_type) in
-    return (Ident_and_types (hd, tl))
-  in
-  oneof [ gen_only_types; gen_ident_and_types ]
+  gen_only_types
 ;;
 
 let gen_anon_func gblock =

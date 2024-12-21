@@ -22,8 +22,8 @@ type ctype =
 
 type global_env = ctype MapIdent.t
 type local_env = ctype MapIdent.t list
-type current_func = ident
-type type_check = global_env * local_env * current_func option
+type current_func = ctype list
+type type_check = global_env * local_env * current_func
 
 module CheckMonad = struct
   open Errors
@@ -37,24 +37,8 @@ module CheckMonad = struct
     | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map PpType.print_type x))
   ;;
 
-  let retrieve_paris_first args = List.map (fun (x, _) -> x) args
-  let retrieve_paris_second args = List.map (fun (_, x) -> x) args
-
-  let retrieve_anon_func x =
-    let args = retrieve_paris_second x.args in
-    match x.returns with
-    | Some (Only_types (x, y)) -> Type_func (args, x :: y)
-    | Some (Ident_and_types (x, y)) -> Type_func (args, retrieve_paris_second (x :: y))
-    | None -> Type_func (args, [])
-  ;;
-
-  let retrieve_type_const x =
-    match x with
-    | Const_array (x, y, _) -> return (Type_array (x, y))
-    | Const_int _ -> return Type_int
-    | Const_string _ -> return Type_string
-    | Const_func x -> return (retrieve_anon_func x)
-  ;;
+  let rpf args = List.map (fun (x, _) -> x) args
+  let rps args = List.map (fun (_, x) -> x) args
 
   let read_local : 'a MapIdent.t list t =
     read
@@ -64,6 +48,18 @@ module CheckMonad = struct
 
   let seek_local_definition_ident ident =
     read_local >>= fun local -> MapIdent.find_opt ident (List.hd local) |> return
+  ;;
+
+  let delete_func : (type_check, 'a) BaseMonad.t =
+    read
+    >>= function
+    | g, l, fl -> write (g, l, List.tl fl)
+  ;;
+
+  let write_func func =
+    read
+    >>= function
+    | g, l, fl -> write (g, l, func :: fl)
   ;;
 
   let read_local_ident ident =
@@ -83,8 +79,6 @@ module CheckMonad = struct
   let read_global_ident ident =
     read_global >>= fun global -> MapIdent.find_opt ident global |> return
   ;;
-
-  let rec fix f x = f (fix f) (return x)
 
   let write_local new_local =
     read
@@ -156,19 +150,13 @@ module CheckMonad = struct
            (Type_check_error (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
   ;;
 
-  let get_func_name : current_func t =
+  let get_func_name : ctype t =
     read
     >>= function
-    | _, _, Some n -> return n
-    | _ -> fail (Type_check_error Check_failed)
+    | _, _, [] -> fail (Type_check_error Check_failed)
+    | _, _, fn -> return (List.hd fn)
   ;;
 
   let write_env = read_local >>= fun x -> write_local (MapIdent.empty :: x)
   let delete_env = read_local >>= fun x -> write_local (List.tl x)
-
-  let write_func_name func =
-    read
-    >>= function
-    | g, l, _ -> write (g, l, Some func)
-  ;;
 end
