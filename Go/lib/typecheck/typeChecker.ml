@@ -68,6 +68,38 @@ let check_eq t1 t2 =
   | false -> fail (Type_check_error (Mismatched_types "Types mismatched in binoper"))
 ;;
 
+let check_func_call f (func, args) =
+  let ftype =
+    f func
+    >>= function
+    | Ctype (Type_func (lst, _)) -> map (fun x -> return (Ctype x)) lst
+    | _ -> fail (Type_check_error (Mismatched_types "Expected func type here"))
+  in
+  let argtype =
+    match args with
+    | [ x ] ->
+      f x
+      >>= (function
+       | Ctuple x -> map (fun x1 -> return (Ctype x1)) x
+       | x -> return [ x ])
+    | lst ->
+      map
+        (fun x ->
+          f x
+          >>= function
+          | Ctuple _ ->
+            fail (Type_check_error (Mismatched_types "Expected func type here"))
+          | x -> return x)
+        lst
+  in
+  (argtype
+   >>= (fun at -> ftype >>= fun ft -> return (List.length ft = List.length at))
+   >>= function
+   | true -> ftype >>= fun x -> iter2 (fun arg typ -> f arg >>= check_eq typ) args x
+   | false -> fail (Type_check_error (Mismatched_types "Number of arg given mismached")))
+  *> return ()
+;;
+
 let rec retrieve_expr caf = function
   | Expr_const const -> retrieve_const caf const
   | Expr_un_oper (op, expr) ->
@@ -95,40 +127,9 @@ let rec retrieve_expr caf = function
        compare_operation_typ left right (Ctype Type_bool) *> return (Ctype Type_bool)
      | Bin_equal | Bin_not_equal -> compare_arg_typ left right *> return (Ctype Type_bool))
   | Expr_call (func, args) ->
-    let ftype =
-      retrieve_expr caf func
-      >>= function
-      | Ctype (Type_func (lst, _)) -> map (fun x -> return (Ctype x)) lst
-      | _ -> fail (Type_check_error (Mismatched_types "Expected func type here"))
-    in
-    let argtype =
-      match args with
-      | [ x ] ->
-        retrieve_expr caf x
-        >>= (function
-         | Ctuple x -> map (fun x1 -> return (Ctype x1)) x
-         | x -> return [ x ])
-      | lst ->
-        map
-          (fun x ->
-            retrieve_expr caf x
-            >>= function
-            | Ctuple _ ->
-              fail (Type_check_error (Mismatched_types "Expected func type here"))
-            | x -> return x)
-          lst
-    in
-    (argtype
-     >>= (fun at -> ftype >>= fun ft -> return (List.length ft = List.length at))
-     >>= fun x ->
-     match x with
-     | true ->
-       ftype
-       >>= fun x -> iter2 (fun arg typ -> retrieve_expr caf arg >>= check_eq typ) args x
-     | false -> fail (Type_check_error (Mismatched_types "Number of arg given mismached"))
-    )
+    check_func_call (retrieve_expr caf) (func, args)
     *> map (retrieve_expr caf) args
-    *> (retrieve_expr caf) func (* кажется нет проверки того, что аргументы правильные *)
+    *> (retrieve_expr caf) func
     >>= (function
      | Ctype (Type_func (_, fst :: snd :: tl)) -> return (Ctuple (fst :: snd :: tl))
      | Ctype (Type_func (_, hd :: _)) -> return (Ctype hd)
@@ -193,10 +194,6 @@ let check_short_var_decl caf = function
          (List.map (fun _ -> Expr_call call) (fst :: snd :: tl)))
 ;;
 
-let check_func_call caf (func, args) =
-  retrieve_expr caf func *> map (retrieve_expr caf) args *> return ()
-;;
-
 let rec retrieve_lvalue caf = function
   | Lvalue_ident id -> retrieve_ident id
   | Lvalue_array_index (Lvalue_ident array, index)
@@ -223,12 +220,12 @@ let check_assign caf = function
   | Assign_one_expr (x, y, _, w) ->
     retrieve_lvalue caf x
     *> retrieve_lvalue caf y
-    *> check_func_call caf w (* кажется неправильно *)
+    *> check_func_call (retrieve_expr caf) w (* кажется неправильно *)
 ;;
 
 let check_init caf = function
   | Some (Init_assign assign) -> check_assign caf assign
-  | Some (Init_call call) -> check_func_call caf call
+  | Some (Init_call call) -> check_func_call (retrieve_expr caf) call
   | Some (Init_decl x) -> check_short_var_decl caf x *> return ()
   | Some (Init_decr id) -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Some (Init_incr id) -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
@@ -245,9 +242,9 @@ let rec check_stmt = function
   | Stmt_incr id -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Stmt_decr id -> retrieve_ident id >>= fun t -> check_eq t (Ctype Type_int)
   | Stmt_assign assign -> check_assign check_stmt assign
-  | Stmt_call call -> check_func_call check_stmt call
-  | Stmt_defer call -> check_func_call check_stmt call
-  | Stmt_go call -> check_func_call check_stmt call
+  | Stmt_call call -> check_func_call (retrieve_expr check_stmt) call
+  | Stmt_defer call -> check_func_call (retrieve_expr check_stmt) call
+  | Stmt_go call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_chan_send (id, expr) ->
     seek_ident id *> retrieve_expr check_stmt expr *> return ()
   | Stmt_block block -> write_env *> iter check_stmt block *> delete_env

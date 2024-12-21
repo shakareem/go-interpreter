@@ -133,8 +133,7 @@ let%expect_test "err: func call one init with mismathced types" =
     
     func main() {}
     |};
-  [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in binoper |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in binoper |}]
 ;;
 
 let%expect_test "err: var redeclaration" =
@@ -145,7 +144,8 @@ let%expect_test "err: var redeclaration" =
     
     func main() {}
     |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in string |}]
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in string |}]
 ;;
 
 (********** top func decl **********)
@@ -255,6 +255,25 @@ let%expect_test "ok: factorial func" =
 ;;
 
 (********** stmt **********)
+
+let%expect_test "incorrect call in stmt" =
+  pp
+    {|
+
+    func main() {
+      println(1, 1, "k", 3)
+    }
+    
+    func swap() (string, string) {
+      return "a", "b"
+    }
+    func println(a string, b string, c string) (string, string, string) {
+      return a, b, c
+    }
+
+|};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Number of arg given mismached |}]
+;;
 
 let%expect_test "undefined var inc" =
   pp
@@ -522,4 +541,23 @@ let%expect_test "correct anon_func" =
     }
 |};
   [%expect {| CORRECT |}]
+;;
+
+let%expect_test "incorrect multiple returns in single-value context" =
+  pp
+    {|
+
+    func main() {
+      println(swap(), "j")
+    }
+    
+    func swap() (string, string) {
+      return "a", "b"
+    }
+    func println(a string, b string, c string) (string, string, string) {
+      return a, b, c
+    }
+
+|};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Expected func type here |}]
 ;;
