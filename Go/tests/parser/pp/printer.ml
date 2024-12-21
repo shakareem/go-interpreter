@@ -37,12 +37,10 @@ let print_func_args_returns_and_body pblock anon_func =
   let { args; returns; body } = anon_func in
   let print_returns =
     match returns with
-    | Some (Only_types (hd, tl)) ->
+    | Some (hd, tl) ->
       (match tl with
        | _ :: _ -> asprintf " (%s)" (sep_by_comma (hd :: tl) print_type)
        | [] -> " " ^ print_type hd)
-    | Some (Ident_and_types (hd, tl)) ->
-      asprintf " (%s)" (print_idents_with_types (hd :: tl))
     | None -> ""
   in
   asprintf "(%s)%s %s" (print_idents_with_types args) print_returns (pblock body)

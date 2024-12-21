@@ -131,7 +131,7 @@ let%expect_test "expr anon func with one arg and one return value" =
        (Expr_const
           (Const_func
              { args = [ "a", Type_int ]
-             ; returns = Some (Only_types (Type_int, []))
+             ; returns = Some (Type_int, [])
              ; body = [ Stmt_return [ Expr_ident "a" ] ]
              })));
   [%expect {|
@@ -146,36 +146,12 @@ let%expect_test "expr anon func with mult args and return values" =
        (Expr_const
           (Const_func
              { args = [ "a", Type_int; "b", Type_string ]
-             ; returns = Some (Only_types (Type_int, [ Type_string ]))
+             ; returns = Some (Type_int, [ Type_string ])
              ; body = [ Stmt_return [ Expr_ident "a"; Expr_ident "b" ] ]
              })));
   [%expect {|
     func(a int, b string) (int, string) {
         return a, b
-    } |}]
-;;
-
-let%expect_test "expr anon func with mult args and named return values" =
-  print_endline
-    (print_expr
-       (Expr_const
-          (Const_func
-             { args = [ "a", Type_int; "b", Type_string ]
-             ; returns =
-                 Some (Ident_and_types (("res1", Type_int), [ "res2", Type_string ]))
-             ; body =
-                 [ Stmt_assign
-                     (Assign_mult_expr
-                        ( (Lvalue_ident "res1", Expr_ident "a")
-                        , [ Lvalue_ident "res2", Expr_ident "b" ] ))
-                 ; Stmt_return []
-                 ]
-             })));
-  [%expect
-    {|
-    func(a int, b string) (res1 int, res2 string) {
-        res1, res2 = a, b
-        return
     } |}]
 ;;
 
@@ -840,10 +816,7 @@ let%expect_test "file with simple func decl" =
     (print_file
        [ Decl_func
            ( "main"
-           , { args = [ "a", Type_int ]
-             ; returns = Some (Only_types (Type_bool, []))
-             ; body = []
-             } )
+           , { args = [ "a", Type_int ]; returns = Some (Type_bool, []); body = [] } )
        ]);
   [%expect {| func main(a int) bool {} |}]
 ;;
@@ -866,7 +839,7 @@ let%expect_test "file with factorial func" =
        [ Decl_func
            ( "fac"
            , { args = [ "n", Type_int ]
-             ; returns = Some (Only_types (Type_int, []))
+             ; returns = Some (Type_int, [])
              ; body =
                  [ Stmt_if
                      { init = None
@@ -920,7 +893,7 @@ let%expect_test "file with factorial func" =
        ; Decl_func
            ( "fac"
            , { args = [ "n", Type_int ]
-             ; returns = Some (Only_types (Type_int, []))
+             ; returns = Some (Type_int, [])
              ; body =
                  [ Stmt_if
                      { init = None

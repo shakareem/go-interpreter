@@ -55,24 +55,14 @@ let shrink_anon_func shblock anon_func =
      return { args = new_args; returns; body })
     <+> (let* new_returns =
            match returns with
-           | Some (Ident_and_types (first, hd :: tl)) ->
-             let* new_ident_and_types =
-               list ~shrink:shrink_id_and_type (first :: hd :: tl)
-             in
-             (match new_ident_and_types with
-              | hd :: tl -> return (Some (Ident_and_types (hd, tl)))
-              | [] -> return None)
-           | Some (Ident_and_types (pair, [])) ->
-             let* new_pair = shrink_id_and_type pair in
-             of_list [ None; Some (Ident_and_types (new_pair, [])) ]
-           | Some (Only_types (first, hd :: tl)) ->
+           | Some (first, hd :: tl) ->
              let* new_types = list ~shrink:shrink_type (first :: hd :: tl) in
              (match new_types with
-              | hd :: tl -> return (Some (Only_types (hd, tl)))
+              | hd :: tl -> return (Some (hd, tl))
               | [] -> return None)
-           | Some (Only_types (type', [])) ->
+           | Some (type', []) ->
              let* new_type = shrink_type type' in
-             of_list [ None; Some (Only_types (new_type, [])) ]
+             of_list [ None; Some (new_type, []) ]
            | None -> empty
          in
          return { args; returns = new_returns; body })
