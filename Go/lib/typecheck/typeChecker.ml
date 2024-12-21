@@ -22,11 +22,11 @@ let check_anon_func afunc cstmt =
   *> return (get_afunc_type afunc)
 ;;
 
-let retrieve_const caf = function
+let retrieve_const cstmt = function
   | Const_array (size, t, _) -> return (Ctype (Type_array (size, t)))
   | Const_int _ -> return (Ctype Type_int)
   | Const_string _ -> return (Ctype Type_string)
-  | Const_func anon_func -> check_anon_func anon_func caf
+  | Const_func anon_func -> check_anon_func anon_func cstmt
 ;;
 
 let check_main =
@@ -79,19 +79,20 @@ let check_func_call rexpr (func, args) =
   *> return ()
 ;;
 
-let rec retrieve_expr caf = function
-  | Expr_const const -> retrieve_const caf const
+let rec retrieve_expr cstmt = function
+  | Expr_const const -> retrieve_const cstmt const
   | Expr_un_oper (op, expr) ->
     (match op with
      | Unary_minus | Unary_plus ->
-       retrieve_expr caf expr
+       retrieve_expr cstmt expr
        >>= fun t -> check_eq t (Ctype Type_int) *> return (Ctype Type_int)
-     | Unary_not -> retrieve_expr caf expr)
+     | Unary_not -> retrieve_expr cstmt expr)
     >>= fun t -> check_eq t (Ctype Type_bool) *> return (Ctype Type_bool)
   | Expr_ident id -> retrieve_ident id
   | Expr_bin_oper (op, left, right) ->
     let compare_arg_typ type1 type2 =
-      retrieve_expr caf type1 >>= fun type1 -> retrieve_expr caf type2 >>= eq_type type1
+      retrieve_expr cstmt type1
+      >>= fun type1 -> retrieve_expr cstmt type2 >>= eq_type type1
     in
     let compare_operation_typ type1 type2 t = compare_arg_typ type1 type2 >>= eq_type t in
     (match op with
@@ -103,21 +104,21 @@ let rec retrieve_expr caf = function
        compare_operation_typ left right (Ctype Type_bool) *> return (Ctype Type_bool)
      | Bin_equal | Bin_not_equal -> compare_arg_typ left right *> return (Ctype Type_bool))
   | Expr_call (func, args) ->
-    check_func_call (retrieve_expr caf) (func, args)
-    *> map (retrieve_expr caf) args
-    *> (retrieve_expr caf) func
+    check_func_call (retrieve_expr cstmt) (func, args)
+    *> map (retrieve_expr cstmt) args
+    *> (retrieve_expr cstmt) func
     >>= (function
      | Ctype (Type_func (_, fst :: snd :: tl)) -> return (Ctuple (fst :: snd :: tl))
      | Ctype (Type_func (_, hd :: _)) -> return (Ctype hd)
      | _ ->
        fail (Type_check_error (Mismatched_types "Function without returns in expression")))
   | Expr_chan_receive chan ->
-    retrieve_expr caf chan
+    retrieve_expr cstmt chan
     >>= (function
      | Ctype (Type_chan (_, y)) -> return (Ctype y)
      | _ -> fail (Type_check_error (Mismatched_types "Chan type mismatch")))
-  | Expr_index (array, index) when retrieve_expr caf index = return (Ctype Type_int) ->
-    retrieve_expr caf array
+  | Expr_index (array, index) when retrieve_expr cstmt index = return (Ctype Type_int) ->
+    retrieve_expr cstmt array
     >>= (function
      | Ctype (Type_array (_, t)) -> return (Ctype t)
      | _ ->
@@ -126,23 +127,23 @@ let rec retrieve_expr caf = function
     fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
-let check_long_var_decl caf save_ident = function
+let check_long_var_decl cstmt save_ident = function
   | Long_decl_no_init (t, hd, tl) -> iter (fun id -> save_ident id (Ctype t)) (hd :: tl)
   | Long_decl_mult_init (Some type', hd, tl) ->
     iter
       (fun (id, expr) ->
-        (retrieve_expr caf expr >>= fun t -> check_eq t (Ctype type'))
+        (retrieve_expr cstmt expr >>= fun t -> check_eq t (Ctype type'))
         *> save_ident id (Ctype type'))
       (hd :: tl)
   | Long_decl_mult_init (None, hd, tl) ->
-    iter (fun (id, expr) -> retrieve_expr caf expr >>= save_ident id) (hd :: tl)
+    iter (fun (id, expr) -> retrieve_expr cstmt expr >>= save_ident id) (hd :: tl)
   | Long_decl_one_init (Some type', fst, snd, tl, call) ->
-    retrieve_expr caf (Expr_call call)
+    retrieve_expr cstmt (Expr_call call)
     >>= fun t ->
     check_eq t (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> type')))
     *> iter (fun id -> save_ident id (Ctype type')) (fst :: snd :: tl)
   | Long_decl_one_init (None, fst, snd, tl, call) ->
-    retrieve_expr caf (Expr_call call)
+    retrieve_expr cstmt (Expr_call call)
     >>= (function
      | Ctype _ ->
        fail
@@ -160,11 +161,11 @@ let check_long_var_decl caf save_ident = function
                "function returns wrong number of elements in multiple var assign")))
 ;;
 
-let check_short_var_decl caf = function
+let check_short_var_decl cstmt = function
   | Short_decl_mult_init (hd, tl) ->
-    iter (fun (id, expr) -> retrieve_expr caf expr >>= save_local_ident id) (hd :: tl)
+    iter (fun (id, expr) -> retrieve_expr cstmt expr >>= save_local_ident id) (hd :: tl)
   | Short_decl_one_init (fst, snd, tl, call) ->
-    retrieve_expr caf (Expr_call call)
+    retrieve_expr cstmt (Expr_call call)
     >>= (function
      | Ctype _ ->
        fail
@@ -184,52 +185,60 @@ let check_short_var_decl caf = function
                   "function returns wrong number of elements in multiple var decl"))))
 ;;
 
-let rec retrieve_lvalue caf = function
+let rec retrieve_lvalue cstmt = function
   | Lvalue_ident id -> retrieve_ident id
   | Lvalue_array_index (Lvalue_ident array, index)
-    when retrieve_expr caf index = return (Ctype Type_int) ->
+    when retrieve_expr cstmt index = return (Ctype Type_int) ->
     retrieve_ident array
     >>= (function
      | Ctype (Type_array (_, t)) -> return (Ctype t)
      | _ ->
        fail (Type_check_error (Mismatched_types "Non-array type in array index call")))
   | Lvalue_array_index (lvalue_array_index, index)
-    when retrieve_expr caf index = return (Ctype Type_int) ->
-    retrieve_lvalue caf lvalue_array_index
+    when retrieve_expr cstmt index = return (Ctype Type_int) ->
+    retrieve_lvalue cstmt lvalue_array_index
   | Lvalue_array_index (_, _) ->
     fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
-let check_assign caf = function
+let check_assign cstmt = function
   | Assign_mult_expr (hd, tl) ->
     iter
       (fun (lvalue, expr) ->
-        retrieve_lvalue caf lvalue
-        >>= fun type1 -> retrieve_expr caf expr >>= check_eq type1)
+        retrieve_lvalue cstmt lvalue
+        >>= fun type1 -> retrieve_expr cstmt expr >>= check_eq type1)
       (hd :: tl)
   | Assign_one_expr (l1, l2, ls, w) ->
-    retrieve_expr caf (Expr_call w)
+    retrieve_expr cstmt (Expr_call w)
     >>= (function
      | Ctype _ -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))
      | Ctuple types ->
        (match List.length types = List.length (l1 :: l2 :: ls) with
         | true ->
           iter2
-            (fun lvalue t -> retrieve_lvalue caf lvalue >>= check_eq (Ctype t))
+            (fun lvalue t -> retrieve_lvalue cstmt lvalue >>= check_eq (Ctype t))
             (l1 :: l2 :: ls)
             types
         | false -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))))
 ;;
 
-let check_init caf = function
-  | Some (Init_assign assign) -> check_assign caf assign
-  | Some (Init_call call) -> check_func_call (retrieve_expr caf) call
-  | Some (Init_decl decl) -> check_short_var_decl caf decl *> return ()
+let check_chan_send cstmt (id, expr) =
+  retrieve_expr cstmt expr
+  >>= fun expr_type ->
+  retrieve_ident id
+  >>= function
+  | Ctype (Type_chan (_, chan_type)) -> check_eq expr_type (Ctype chan_type)
+  | _ -> fail (Type_check_error (Mismatched_types "expected chan type")) *> return ()
+;;
+
+let check_init cstmt = function
+  | Some (Init_assign assign) -> check_assign cstmt assign
+  | Some (Init_call call) -> check_func_call (retrieve_expr cstmt) call
+  | Some (Init_decl decl) -> check_short_var_decl cstmt decl *> return ()
   | Some (Init_decr id) -> retrieve_ident id >>= check_eq (Ctype Type_int)
   | Some (Init_incr id) -> retrieve_ident id >>= check_eq (Ctype Type_int)
-  | Some (Init_receive chan) -> retrieve_expr caf chan *> return ()
-  | Some (Init_send (id, expr)) ->
-    retrieve_ident id *> retrieve_expr caf expr *> return ()
+  | Some (Init_receive chan) -> retrieve_expr cstmt chan *> return ()
+  | Some (Init_send send) -> check_chan_send cstmt send
   | None -> return ()
 ;;
 
@@ -243,13 +252,7 @@ let rec check_stmt = function
   | Stmt_call call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_defer call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_go call -> check_func_call (retrieve_expr check_stmt) call
-  | Stmt_chan_send (id, expr) ->
-    retrieve_expr check_stmt expr
-    >>= fun expr_type ->
-    retrieve_ident id
-    >>= (function
-     | Ctype (Type_chan (_, chan_type)) -> check_eq expr_type (Ctype chan_type)
-     | _ -> fail (Type_check_error (Mismatched_types "expected chan type")) *> return ())
+  | Stmt_chan_send send -> check_chan_send check_stmt send
   | Stmt_block block -> write_env *> iter check_stmt block *> delete_env
   | Stmt_break -> return ()
   | Stmt_chan_receive chan -> retrieve_expr check_stmt chan *> return ()
