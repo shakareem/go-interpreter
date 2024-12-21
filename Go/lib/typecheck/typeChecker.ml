@@ -36,9 +36,8 @@ let check_main =
   | Some (Ctype (Type_func _)) ->
     fail
       (Type_check_error
-         (Incorrect_main
-            (Printf.sprintf "func main must have no arguments and no return values")))
-  | _ -> fail (Type_check_error (Incorrect_main (Printf.sprintf "main func not found")))
+         (Incorrect_main "func main must have no arguments and no return values"))
+  | _ -> fail (Type_check_error (Incorrect_main "main func not found"))
 ;;
 
 let eq_type t1 t2 =
@@ -53,35 +52,30 @@ let check_eq t1 t2 =
   | false -> fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
 ;;
 
-let check_func_call f (func, args) =
+let check_func_call rexpr (func, args) =
   let ftype =
-    f func
+    rexpr func
     >>= function
-    | Ctype (Type_func (lst, _)) -> map (fun x -> return (Ctype x)) lst
-    | _ -> fail (Type_check_error (Mismatched_types "Expected func type here"))
+    | Ctype (Type_func (lst, _)) -> map (fun t -> return (Ctype t)) lst
+    | _ -> fail (Type_check_error (Mismatched_types "Expected func type"))
   in
-  let argtype =
-    match args with
-    | [ x ] ->
-      f x
-      >>= (function
-       | Ctuple x -> map (fun x1 -> return (Ctype x1)) x
-       | x -> return [ x ])
-    | lst ->
-      map
-        (fun x ->
-          f x
-          >>= function
-          | Ctuple _ ->
-            fail (Type_check_error (Mismatched_types "Expected func type here"))
-          | x -> return x)
-        lst
+  let argtypes =
+    map
+      (fun arg ->
+        rexpr arg
+        >>= function
+        | Ctuple _ -> fail (Type_check_error (Mismatched_types "Expected single type"))
+        | t -> return t)
+      args
   in
-  (argtype
+  (argtypes
    >>= (fun at -> ftype >>= fun ft -> return (List.length ft = List.length at))
    >>= function
-   | true -> ftype >>= fun x -> iter2 (fun arg typ -> f arg >>= check_eq typ) args x
-   | false -> fail (Type_check_error (Mismatched_types "Number of arg given mismached")))
+   | true ->
+     ftype
+     >>= fun type_list -> iter2 (fun arg typ -> rexpr arg >>= check_eq typ) args type_list
+   | false -> fail (Type_check_error (Mismatched_types "Number of given args mismached"))
+  )
   *> return ()
 ;;
 
@@ -117,8 +111,8 @@ let rec retrieve_expr caf = function
      | Ctype (Type_func (_, hd :: _)) -> return (Ctype hd)
      | _ ->
        fail (Type_check_error (Mismatched_types "Function without returns in expression")))
-  | Expr_chan_receive x ->
-    retrieve_expr caf x
+  | Expr_chan_receive chan ->
+    retrieve_expr caf chan
     >>= (function
      | Ctype (Type_chan (_, y)) -> return (Ctype y)
      | _ -> fail (Type_check_error (Mismatched_types "Chan type mismatch")))
@@ -132,21 +126,21 @@ let rec retrieve_expr caf = function
     fail (Type_check_error (Mismatched_types "Array index is not int"))
 ;;
 
-let check_long_var_decl caf env = function
-  | Long_decl_no_init (t, hd, tl) -> iter (fun i -> env i (Ctype t)) (hd :: tl)
-  | Long_decl_mult_init (Some t, hd, tl) ->
+let check_long_var_decl caf save_ident = function
+  | Long_decl_no_init (t, hd, tl) -> iter (fun id -> save_ident id (Ctype t)) (hd :: tl)
+  | Long_decl_mult_init (Some type', hd, tl) ->
     iter
-      ((fun k (id, expr) ->
-         (retrieve_expr caf expr >>= fun x -> check_eq x k) *> env id k)
-         (Ctype t))
+      (fun (id, expr) ->
+        (retrieve_expr caf expr >>= fun t -> check_eq t (Ctype type'))
+        *> save_ident id (Ctype type'))
       (hd :: tl)
   | Long_decl_mult_init (None, hd, tl) ->
-    iter (fun (id, expr) -> retrieve_expr caf expr >>= env id) (hd :: tl)
-  | Long_decl_one_init (Some t, fst, snd, tl, call) ->
+    iter (fun (id, expr) -> retrieve_expr caf expr >>= save_ident id) (hd :: tl)
+  | Long_decl_one_init (Some type', fst, snd, tl, call) ->
     retrieve_expr caf (Expr_call call)
-    >>= fun x ->
-    check_eq x (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> t)))
-    *> iter (fun i -> env i (Ctype t)) (fst :: snd :: tl)
+    >>= fun t ->
+    check_eq t (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> type')))
+    *> iter (fun id -> save_ident id (Ctype type')) (fst :: snd :: tl)
   | Long_decl_one_init (None, fst, snd, tl, call) ->
     retrieve_expr caf (Expr_call call)
     >>= (function
@@ -155,7 +149,10 @@ let check_long_var_decl caf env = function
          (Type_check_error
             (Mismatched_types "function returns only one element in multiple var decl"))
      | Ctuple types when List.length types = List.length (fst :: snd :: tl) ->
-       iter2 (fun x y -> env x y) (fst :: snd :: tl) (List.map (fun x -> Ctype x) types)
+       iter2
+         (fun id t -> save_ident id t)
+         (fst :: snd :: tl)
+         (List.map (fun t -> Ctype t) types)
      | Ctuple _ ->
        fail
          (Type_check_error
@@ -174,12 +171,12 @@ let check_short_var_decl caf = function
          (Type_check_error
             (Mismatched_types
                "function returns wrong number of elements in multiple var decl"))
-     | Ctuple x ->
-       (match List.length (fst :: snd :: tl) = List.length x with
+     | Ctuple types ->
+       (match List.length (fst :: snd :: tl) = List.length types with
         | true ->
           iter
             (fun (id, tp) -> save_local_ident id (Ctype tp))
-            (List.combine (fst :: snd :: tl) x)
+            (List.combine (fst :: snd :: tl) types)
         | false ->
           fail
             (Type_check_error
@@ -214,20 +211,20 @@ let check_assign caf = function
     retrieve_expr caf (Expr_call w)
     >>= (function
      | Ctype _ -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))
-     | Ctuple x ->
-       (match List.length x = List.length (l1 :: l2 :: ls) with
+     | Ctuple types ->
+       (match List.length types = List.length (l1 :: l2 :: ls) with
         | true ->
           iter2
-            (fun x y -> retrieve_lvalue caf y >>= check_eq (Ctype x))
-            x
+            (fun lvalue t -> retrieve_lvalue caf lvalue >>= check_eq (Ctype t))
             (l1 :: l2 :: ls)
+            types
         | false -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))))
 ;;
 
 let check_init caf = function
   | Some (Init_assign assign) -> check_assign caf assign
   | Some (Init_call call) -> check_func_call (retrieve_expr caf) call
-  | Some (Init_decl x) -> check_short_var_decl caf x *> return ()
+  | Some (Init_decl decl) -> check_short_var_decl caf decl *> return ()
   | Some (Init_decr id) -> retrieve_ident id >>= check_eq (Ctype Type_int)
   | Some (Init_incr id) -> retrieve_ident id >>= check_eq (Ctype Type_int)
   | Some (Init_receive chan) -> retrieve_expr caf chan *> return ()
@@ -248,30 +245,31 @@ let rec check_stmt = function
   | Stmt_go call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_chan_send (id, expr) ->
     retrieve_expr check_stmt expr
-    >>= fun x ->
+    >>= fun expr_type ->
     retrieve_ident id
     >>= (function
-     | Ctype (Type_chan (_, t)) -> check_eq x (Ctype t)
+     | Ctype (Type_chan (_, chan_type)) -> check_eq expr_type (Ctype chan_type)
      | _ -> fail (Type_check_error (Mismatched_types "expected chan type")) *> return ())
   | Stmt_block block -> write_env *> iter check_stmt block *> delete_env
   | Stmt_break -> return ()
   | Stmt_chan_receive chan -> retrieve_expr check_stmt chan *> return ()
   | Stmt_continue -> return ()
   | Stmt_return exprs ->
-    (get_func_name
+    (get_func_return_type
      >>= (function
             | Ctuple rtv ->
               (match List.length exprs = List.length rtv with
-               | true -> return (List.combine exprs (List.map (fun x -> Ctype x) rtv))
+               | true -> return (List.combine exprs (List.map (fun t -> Ctype t) rtv))
                | false ->
                  fail (Type_check_error (Mismatched_types "func return types mismatch")))
             | _ -> fail (Type_check_error Check_failed))
-     >>= iter (fun (x, y) -> retrieve_expr check_stmt x >>= check_eq y))
+     >>= iter (fun (expr, return_type) ->
+       retrieve_expr check_stmt expr >>= check_eq return_type))
     *> return ()
   | Stmt_if if' ->
     write_env *> check_init check_stmt if'.init *> retrieve_expr check_stmt if'.cond
-    >>= fun x ->
-    check_eq (Ctype Type_bool) x
+    >>= fun t ->
+    check_eq t (Ctype Type_bool)
     *> iter check_stmt if'.if_body
     *> delete_env
     *>
@@ -283,7 +281,7 @@ let rec check_stmt = function
     write_env
     *> check_init check_stmt init
     *> (match cond with
-      | Some x -> retrieve_expr check_stmt x >>= check_eq (Ctype Type_bool)
+      | Some expr -> retrieve_expr check_stmt expr >>= check_eq (Ctype Type_bool)
       | None -> return ())
     *> check_init check_stmt post
     *> iter check_stmt body
@@ -298,7 +296,7 @@ let check_top_decl_funcs = function
 
 let check_top_decl = function
   | Decl_func (_, y) -> check_anon_func y check_stmt *> return ()
-  | Decl_var x -> check_long_var_decl check_stmt save_global_ident x
+  | Decl_var decl -> check_long_var_decl check_stmt save_global_ident decl
 ;;
 
 let type_check file =
@@ -310,15 +308,17 @@ let type_check file =
 let pp ast =
   match type_check ast with
   | _, Result.Ok _ -> print_endline "CORRECT"
-  | _, Result.Error x ->
+  | _, Result.Error err ->
     prerr_string "ERROR WHILE TYPECHECK WITH ";
-    (match x with
+    (match err with
      | Type_check_error Check_failed -> prerr_endline "Check failed"
-     | Type_check_error (Multiple_declaration x) ->
-       prerr_string ("Multiple declaration error: " ^ x)
-     | Type_check_error (Incorrect_main x) -> prerr_endline ("Incorrect main error: " ^ x)
-     | Type_check_error (Undefined_ident x) ->
-       prerr_endline ("Undefined ident error: " ^ x)
-     | Type_check_error (Mismatched_types x) -> prerr_endline ("Mismatched types: " ^ x)
-     | Type_check_error (Cannot_assign x) -> prerr_endline ("Mismatched types: " ^ x))
+     | Type_check_error (Multiple_declaration msg) ->
+       prerr_string ("Multiple declaration error: " ^ msg)
+     | Type_check_error (Incorrect_main msg) ->
+       prerr_endline ("Incorrect main error: " ^ msg)
+     | Type_check_error (Undefined_ident msg) ->
+       prerr_endline ("Undefined ident error: " ^ msg)
+     | Type_check_error (Mismatched_types msg) ->
+       prerr_endline ("Mismatched types: " ^ msg)
+     | Type_check_error (Cannot_assign msg) -> prerr_endline ("Mismatched types: " ^ msg))
 ;;

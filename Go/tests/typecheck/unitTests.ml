@@ -364,7 +364,7 @@ let%expect_test "err: incorrect call in stmt" =
 
 |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: Number of arg given mismached |}]
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Number of given args mismached |}]
 ;;
 
 let%expect_test "err: undefined var inc" =
@@ -723,7 +723,7 @@ let%expect_test "err: incorrect multiple returns in single-value context" =
     }
 
 |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Expected func type here |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Expected single type |}]
 ;;
 
 let%expect_test "ok: correct chans return context" =

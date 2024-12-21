@@ -12,26 +12,27 @@ end
 
 module MapIdent = Map.Make (Ident)
 
-(*Is used to check multiple returns. Go has no tuple type,
-  multiple returns put the result bytes in stack
-  https://stackoverflow.com/questions/18622706/what-exactly-is-happening-when-go-returns-multiple-values*)
+(** Is used to check multiple returns. Go has no tuple type,
+    multiple returns put the result bytes in stack
+    https://stackoverflow.com/questions/18622706/what-exactly-is-happening-when-go-returns-multiple-values *)
 type ctype =
   | Ctype of type'
   | Ctuple of type' list
 [@@deriving show { with_path = false }, eq]
 
-(*MapIdent is used to map ident and it's type in global space*)
+(** MapIdent is used to map ident and it's type in global space *)
 type global_env = ctype MapIdent.t
 
-(*list of MapIdent is used to map ident and it's type in local space.
-  Add MapIdent if you enter in if/for body or func literal and then delete it after checking block of statements
-  If we didn't find ident in Map, we will seek it in next 'till we find it or not find it even in global space
-  and fail with undefined ident error*)
+(** list of MapIdent is used to map ident and it's type in local space.
+    Add MapIdent if you enter in if/for body or func literal and then delete it after checking block of statements
+    If we didn't find ident in Map, we will seek it in next 'till we find it or not find it even in global space
+    and fail with undefined ident error *)
 type local_env = ctype MapIdent.t list
 
-(*list of ctype is used to check returns in nested functions*)
-type current_func = ctype list
-type type_check = global_env * local_env * current_func
+(** List of ctype that stores function return types, used to check returns in nested functions *)
+type current_funcs = ctype list
+
+type type_check = global_env * local_env * current_funcs
 
 module CheckMonad = struct
   open Errors
@@ -145,7 +146,7 @@ module CheckMonad = struct
            (Type_check_error (Undefined_ident (Printf.sprintf "%s is not defined" ident))))
   ;;
 
-  let get_func_name : ctype t =
+  let get_func_return_type : ctype t =
     read
     >>= function
     | _, _, [] -> fail (Type_check_error Check_failed)
