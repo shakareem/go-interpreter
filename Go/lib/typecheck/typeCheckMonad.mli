@@ -57,4 +57,5 @@ module CheckMonad : sig
   val get_func_return_type : ctype t
   val write_env : unit t
   val delete_env : unit t
+  val print_type : ctype -> string
 end

@@ -35,13 +35,27 @@ let check_main =
 let eq_type t1 t2 =
   if equal_ctype t1 t2
   then return t1
-  else fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
+  else
+    fail
+      (Type_check_error
+         (Mismatched_types
+            (Printf.sprintf
+               "Types mismatched in equation with return %s and %s"
+               (print_type t1)
+               (print_type t2))))
 ;;
 
 let check_eq t1 t2 =
   if equal_ctype t1 t2
   then return ()
-  else fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
+  else
+    fail
+      (Type_check_error
+         (Mismatched_types
+            (Printf.sprintf
+               "Types mismatched in equation %s and %s"
+               (print_type t1)
+               (print_type t2))))
 ;;
 
 let retrieve_const cstmt rexpr = function
@@ -87,14 +101,17 @@ let check_func_call rexpr (func, args) =
   *> return ()
 ;;
 
+let rec nested_array = function
+  | Ctype (Type_array (_, y)) -> nested_array (Ctype y)
+  | x -> x
+;;
+
 let rec retrieve_expr cstmt = function
   | Expr_const const -> retrieve_const cstmt (retrieve_expr cstmt) const
   | Expr_un_oper (op, expr) ->
     (match op with
-     | Unary_minus | Unary_plus ->
-       retrieve_expr cstmt expr >>= fun t -> eq_type t (Ctype Type_int)
-     | Unary_not -> retrieve_expr cstmt expr)
-    >>= fun t -> eq_type t (Ctype Type_bool)
+     | Unary_minus | Unary_plus -> retrieve_expr cstmt expr >>= eq_type (Ctype Type_int)
+     | Unary_not -> retrieve_expr cstmt expr >>= fun t -> eq_type t (Ctype Type_bool))
   | Expr_ident id -> retrieve_ident id
   | Expr_bin_oper (op, left, right) ->
     let compare_arg_typ type1 type2 =
@@ -125,10 +142,10 @@ let rec retrieve_expr cstmt = function
      | Ctype (Type_chan (_, y)) -> return (Ctype y)
      | _ -> fail (Type_check_error (Mismatched_types "Chan type mismatch")))
   | Expr_index (array, index) ->
-    (retrieve_expr cstmt index >>= check_eq (Ctype Type_int))
+    (retrieve_expr cstmt index >>= fun x -> check_eq (nested_array x) (Ctype Type_int))
     *> (retrieve_expr cstmt array
         >>= function
-        | Ctype (Type_array (_, t)) -> return (Ctype t)
+        | Ctype (Type_array (_, t)) -> return (nested_array (Ctype t))
         | _ ->
           fail (Type_check_error (Mismatched_types "Non-array type in array index call"))
        )
@@ -194,7 +211,7 @@ let rec retrieve_lvalue cstmt = function
   | Lvalue_array_index (Lvalue_ident array, index) ->
     (retrieve_expr cstmt index >>= check_eq (Ctype Type_int)) *> retrieve_ident array
     >>= (function
-     | Ctype (Type_array (_, t)) -> return (Ctype t)
+     | Ctype (Type_array (_, t)) -> return (nested_array (Ctype t))
      | _ ->
        fail (Type_check_error (Mismatched_types "Non-array type in array index call")))
   | Lvalue_array_index (lvalue_array_index, index) ->
