@@ -28,11 +28,7 @@ let eq_type t1 t2 =
   else
     fail
       (Type_check_error
-         (Mismatched_types
-            (Printf.sprintf
-               " in equation with return %s and %s"
-               (print_type t1)
-               (print_type t2))))
+         (Mismatched_types (Printf.sprintf "%s and %s" (print_type t1) (print_type t2))))
 ;;
 
 let check_eq t1 t2 =
@@ -41,8 +37,7 @@ let check_eq t1 t2 =
   else
     fail
       (Type_check_error
-         (Mismatched_types
-            (Printf.sprintf " in equation %s and %s" (print_type t1) (print_type t2))))
+         (Mismatched_types (Printf.sprintf "%s and %s" (print_type t1) (print_type t2))))
 ;;
 
 let retrieve_const cstmt rexpr = function
@@ -322,29 +317,14 @@ let check_main =
 
 let type_check file =
   run
-    (iter save_top_decl_funcs file
+    (save_ident "true" (Ctype Type_bool)
+     *> save_ident "false" (Ctype Type_bool)
+     *> add_env
+     *> iter save_top_decl_funcs file
      *> iter check_and_save_top_decl_vars file
      *> iter check_top_decl_funcs file
      *> check_main)
     ([ MapIdent.empty ], [])
   |> function
   | _, res -> res
-;;
-
-let pp ast =
-  match type_check ast with
-  | Result.Ok _ -> print_endline "CORRECT"
-  | Result.Error err ->
-    prerr_string "ERROR WHILE TYPECHECK WITH ";
-    (match err with
-     | Type_check_error Check_failed -> prerr_endline "Check failed"
-     | Type_check_error (Multiple_declaration msg) ->
-       prerr_string ("Multiple declaration error: " ^ msg)
-     | Type_check_error (Incorrect_main msg) ->
-       prerr_endline ("Incorrect main error: " ^ msg)
-     | Type_check_error (Undefined_ident msg) ->
-       prerr_endline ("Undefined ident error: " ^ msg)
-     | Type_check_error (Mismatched_types msg) ->
-       prerr_endline ("Mismatched types: " ^ msg)
-     | Type_check_error (Cannot_assign msg) -> prerr_endline ("Mismatched types: " ^ msg))
 ;;
