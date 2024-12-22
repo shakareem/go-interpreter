@@ -40,7 +40,7 @@ let eq_type t1 t2 =
       (Type_check_error
          (Mismatched_types
             (Printf.sprintf
-               "Types mismatched in equation with return %s and %s"
+               " in equation with return %s and %s"
                (print_type t1)
                (print_type t2))))
 ;;
@@ -52,10 +52,7 @@ let check_eq t1 t2 =
     fail
       (Type_check_error
          (Mismatched_types
-            (Printf.sprintf
-               "Types mismatched in equation %s and %s"
-               (print_type t1)
-               (print_type t2))))
+            (Printf.sprintf " in equation %s and %s" (print_type t1) (print_type t2))))
 ;;
 
 let retrieve_const cstmt rexpr = function
@@ -96,7 +93,7 @@ let check_func_call rexpr (func, args) =
    | true ->
      ftype
      >>= fun type_list -> iter2 (fun arg typ -> rexpr arg >>= check_eq typ) args type_list
-   | false -> fail (Type_check_error (Mismatched_types "Number of given args mismached"))
+   | false -> fail (Type_check_error (Mismatched_types "Number of given args mismatched"))
   )
   *> return ()
 ;;
@@ -107,7 +104,7 @@ let rec nested_array ct ind =
   | Ctype (Type_array (_, y)), ind -> nested_array (Ctype y) (ind - 1)
   | _, _ ->
     fail
-      (Type_check_error (Mismatched_types "Number of inexes in assigment is incorrect"))
+      (Type_check_error (Mismatched_types "Number of indexes in assigment is incorrect"))
 ;;
 
 let rec retrieve_expr cstmt = function

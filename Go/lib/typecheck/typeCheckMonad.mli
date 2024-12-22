@@ -48,36 +48,36 @@ module CheckMonad : sig
   val map : ('a -> 'b t) -> 'a list -> 'b list t
   val run : 'a t -> type_check -> type_check * ('a, Errors.error) Result.t
 
-  (*Looking for definition of ident in all lists of local_env, return firs one*)
+  (** Looking for definition of ident in all lists of local_env, return firs one*)
   val seek_local_definition_ident : MapIdent.key -> ctype option t
 
-  (*Add returning match while entering new func space*)
+  (** Add returning match while entering new func space*)
   val write_func : ctype -> unit t
 
-  (*Remove returning match while entering new func space*)
+  (** Remove returning match while entering new func space*)
   val delete_func : unit t
 
-  (*Read type by ident in global space*)
+  (** Read type by ident in global space*)
   val read_global_ident : MapIdent.key -> ctype option t
 
-  (*Save ident-type in local space*)
+  (** Save ident-type in local space*)
   val save_local_ident : MapIdent.key -> ctype -> unit t
 
-  (*Save ident-type in global space*)
+  (** Save ident-type in global space*)
   val save_global_ident : MapIdent.key -> ctype -> unit t
 
-  (*Retrun ident in local and global space or fail*)
+  (** Retrun ident in local and global space or fail*)
   val retrieve_ident : MapIdent.key -> ctype t
 
-  (*Used to match return types in current function*)
+  (** Used to match return types in current function*)
   val get_func_return_type : ctype t
 
-  (*Add new Map to local_env while entering a new block/anon_func/if body/for body*)
+  (** Add new Map to local_env while entering a new block/anon_func/if body/for body*)
   val write_env : unit t
 
-  (*Remove Map from local_env while leaving block/anon_func/if body/for body*)
+  (** Remove Map from local_env while leaving block/anon_func/if body/for body*)
   val delete_env : unit t
 
-  (*Print ctype to string*)
+  (** Print ctype to string*)
   val print_type : ctype -> string
 end
