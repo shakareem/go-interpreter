@@ -908,7 +908,7 @@ let%expect_test "err: array index call with non int index" =
     }
 |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation string and int |}]
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation int and string |}]
 ;;
 
 let%expect_test "ok: array index assignment" =
@@ -946,7 +946,6 @@ let%expect_test "err: array index assignment with wrong expr" =
     {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation int and string |}]
 ;;
 
-(* ОШИБКА *)
 let%expect_test "ok: multidimensional array index assignment" =
   pp
     {|
@@ -959,6 +958,67 @@ let%expect_test "ok: multidimensional array index assignment" =
         arr[i][j] = 10000
     }
 |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: multidimensional array index assignment" =
+  pp
+    {|
+    var arr = [4][7]int{}
+
+    func main() {
+        i := 3
+        j := 2
+
+        arr[i] = 10000
+    }
+|};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation [7]int and int |}]
+;;
+
+let%expect_test "ok: multidimensional array index binoper" =
+  pp
+    {|
+    var arr = [4][7]int{}
+
+    func main() {
+        i := 3
+        j := 2
+
+        i = arr[1][0] + 1
+    }
+|};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: multidimensional array index returns array" =
+  pp
+    {|
+    var arr = [4][7]int{}
+
+    func main() {
+        i := 3
+        j := 2
+
+        i = arr[1] + 1
+    }
+|};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation [7]int and int |}]
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation with return [7]int and int |}]
+;;
+
+let%expect_test "err: multidimensional array index more than it's dimension " =
+  pp
+    {|
+    var arr = [4][7]int{}
+
+    func main() {
+        i := 3
+        j := 2
+
+        i = arr[1][0][0] + 1
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Non-array type in array index call |}]
 ;;

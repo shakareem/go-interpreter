@@ -101,9 +101,13 @@ let check_func_call rexpr (func, args) =
   *> return ()
 ;;
 
-let rec nested_array = function
-  | Ctype (Type_array (_, y)) -> nested_array (Ctype y)
-  | x -> x
+let rec nested_array ct ind =
+  match ct, ind with
+  | x, 0 -> return x
+  | Ctype (Type_array (_, y)), ind -> nested_array (Ctype y) (ind - 1)
+  | _, _ ->
+    fail
+      (Type_check_error (Mismatched_types "Number of inexes in assigment is incorrect"))
 ;;
 
 let rec retrieve_expr cstmt = function
@@ -142,10 +146,10 @@ let rec retrieve_expr cstmt = function
      | Ctype (Type_chan (_, y)) -> return (Ctype y)
      | _ -> fail (Type_check_error (Mismatched_types "Chan type mismatch")))
   | Expr_index (array, index) ->
-    (retrieve_expr cstmt index >>= fun x -> check_eq (nested_array x) (Ctype Type_int))
+    (retrieve_expr cstmt index >>= check_eq (Ctype Type_int))
     *> (retrieve_expr cstmt array
         >>= function
-        | Ctype (Type_array (_, t)) -> return (nested_array (Ctype t))
+        | Ctype (Type_array (_, t)) -> return (Ctype t)
         | _ ->
           fail (Type_check_error (Mismatched_types "Non-array type in array index call"))
        )
@@ -206,24 +210,24 @@ let check_short_var_decl cstmt = function
                   "function returns wrong number of elements in multiple var decl"))))
 ;;
 
-let rec retrieve_lvalue cstmt = function
+let rec retrieve_lvalue ind cstmt = function
   | Lvalue_ident id -> retrieve_ident id
   | Lvalue_array_index (Lvalue_ident array, index) ->
     (retrieve_expr cstmt index >>= check_eq (Ctype Type_int)) *> retrieve_ident array
     >>= (function
-     | Ctype (Type_array (_, t)) -> return (nested_array (Ctype t))
+     | Ctype (Type_array (_, t)) -> nested_array (Ctype t) ind
      | _ ->
        fail (Type_check_error (Mismatched_types "Non-array type in array index call")))
   | Lvalue_array_index (lvalue_array_index, index) ->
     (retrieve_expr cstmt index >>= check_eq (Ctype Type_int))
-    *> retrieve_lvalue cstmt lvalue_array_index
+    *> retrieve_lvalue (ind + 1) cstmt lvalue_array_index
 ;;
 
 let check_assign cstmt = function
   | Assign_mult_expr (hd, tl) ->
     iter
       (fun (lvalue, expr) ->
-        retrieve_lvalue cstmt lvalue
+        retrieve_lvalue 0 cstmt lvalue
         >>= fun type1 -> retrieve_expr cstmt expr >>= check_eq type1)
       (hd :: tl)
   | Assign_one_expr (l1, l2, ls, w) ->
@@ -233,7 +237,7 @@ let check_assign cstmt = function
      | Ctuple types ->
        (try
           iter2
-            (fun lvalue t -> retrieve_lvalue cstmt lvalue >>= check_eq (Ctype t))
+            (fun lvalue t -> retrieve_lvalue 0 cstmt lvalue >>= check_eq (Ctype t))
             (l1 :: l2 :: ls)
             types
         with

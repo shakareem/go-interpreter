@@ -141,7 +141,7 @@ let%expect_test "tmp" =
 
 let%expect_test "stmt default for with valid init and invalid post" =
   print_result
-    {| var arr = [4][7]int{}
+    {| var arr = [4][7][8]int{}
 
     func main() {
         i := 3
@@ -154,7 +154,10 @@ let%expect_test "stmt default for with valid init and invalid post" =
     {|
     [(Decl_var
         (Long_decl_mult_init (None,
-           ("arr", (Expr_const (Const_array (4, (Type_array (7, Type_int)), [])))),
+           ("arr",
+            (Expr_const
+               (Const_array (4, (Type_array (7, (Type_array (8, Type_int)))),
+                  [])))),
            [])));
       (Decl_func
          ("main",
