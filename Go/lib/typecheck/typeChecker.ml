@@ -92,10 +92,9 @@ let rec retrieve_expr cstmt = function
   | Expr_un_oper (op, expr) ->
     (match op with
      | Unary_minus | Unary_plus ->
-       retrieve_expr cstmt expr
-       >>= fun t -> check_eq t (Ctype Type_int) *> return (Ctype Type_int)
+       retrieve_expr cstmt expr >>= fun t -> eq_type t (Ctype Type_int)
      | Unary_not -> retrieve_expr cstmt expr)
-    >>= fun t -> check_eq t (Ctype Type_bool) *> return (Ctype Type_bool)
+    >>= fun t -> eq_type t (Ctype Type_bool)
   | Expr_ident id -> retrieve_ident id
   | Expr_bin_oper (op, left, right) ->
     let compare_arg_typ type1 type2 =

@@ -809,3 +809,158 @@ let%expect_test "err: incorrect chan send type" =
   [%expect
     {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
 ;;
+
+(********** expr **********)
+
+let%expect_test "ok: right types in bin sum" =
+  pp {|
+    func main() {
+        c := 2 + 2
+    }
+|};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: mismatched types in bin sum" =
+  pp {|
+    var a = 5
+
+    var b = "st"
+
+    func main() {
+        var c = a + b
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+(* ОШИБКА *)
+let%expect_test "ok: right type in unary minus" =
+  pp {|
+    func main() {
+        c := -7
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+let%expect_test "err: wrong type in unary minus" =
+  pp {|
+    var a bool
+
+    func main() {
+        c := -a
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+let%expect_test "ok: right types in const array inits" =
+  pp {|
+  
+    func main() {
+        a := 7
+
+        c := [2]int{1, a}
+    }
+|};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: wrong types in const array inits" =
+  pp {|
+    func main() {
+        c := [2]int{1, func() {}}
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+let%expect_test "ok: too much const array inits" =
+  pp {|
+    func main() {
+        c := [2]string{"", "a", "123"}
+    }
+|};
+  [%expect {| ERROR WHILE TYPECHECK WITH Check failed |}]
+;;
+
+let%expect_test "ok: simple array index call" =
+  pp
+    {|
+    var arr = [4]int{}
+
+    func main() {
+        c := arr[func() int {return 0}()]
+    }
+|};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: array index call with non int index" =
+  pp {|
+    var arr = [4]int{}
+
+    func main() {
+        c := arr["0"]
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+let%expect_test "ok: array index assignment" =
+  pp {|
+    var arr = [4]int{}
+
+    func main() {
+        arr[2] = 7
+    }
+|};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: array index assignment with non-int index" =
+  pp {|
+    var arr = [4]int{}
+
+    func main() {
+        arr[func() {}] = 7
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+let%expect_test "err: array index assignment with wrong expr" =
+  pp {|
+    var arr = [4]int{}
+
+    func main() {
+        arr[10] = ""
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
+
+(* ОШИБКА *)
+let%expect_test "ok: multidimensional array index assignment" =
+  pp
+    {|
+    var arr = [4][7]int{}
+
+    func main() {
+        i := 3
+        j := 2
+
+        arr[i][j] = 10000
+    }
+|};
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Types mismatched in equation |}]
+;;
