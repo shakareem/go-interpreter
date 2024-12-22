@@ -52,7 +52,7 @@ let%expect_test "err: no main" =
   var a int
   func foo(b int) {}
   |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Incorrect main error: main func not found |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: main is not defined |}]
 ;;
 
 let%expect_test "ok: main call" =

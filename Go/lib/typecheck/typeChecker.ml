@@ -7,29 +7,19 @@ open TypeCheckMonad.CheckMonad
 open Errors
 open Ast
 
-let lps args = List.map (fun (_, snd) -> snd) args
-let get_afunc_type afunc = Ctype (Type_func (lps afunc.args, afunc.returns))
+let get_afunc_type afunc =
+  Ctype (Type_func (List.map (fun (_, snd) -> snd) afunc.args, afunc.returns))
+;;
 
 let check_anon_func afunc cstmt =
-  let save_args = iter (fun (id, t) -> save_local_ident id (Ctype t)) afunc.args in
-  write_env
-  *> write_func (Ctuple afunc.returns)
+  let save_args = iter (fun (id, t) -> save_ident id (Ctype t)) afunc.args in
+  add_env
+  *> save_func (Ctuple afunc.returns)
   *> save_args
   *> iter cstmt afunc.body
   *> delete_func
   *> delete_env
   *> return (get_afunc_type afunc)
-;;
-
-let check_main =
-  read_global_ident "main"
-  >>= function
-  | Some (Ctype (Type_func ([], []))) -> return ()
-  | Some (Ctype (Type_func _)) ->
-    fail
-      (Type_check_error
-         (Incorrect_main "func main must have no arguments and no return values"))
-  | _ -> fail (Type_check_error (Incorrect_main "main func not found"))
 ;;
 
 let eq_type t1 t2 =
@@ -185,7 +175,7 @@ let check_long_var_decl cstmt save_ident = function
 
 let check_short_var_decl cstmt = function
   | Short_decl_mult_init (hd, tl) ->
-    iter (fun (id, expr) -> retrieve_expr cstmt expr >>= save_local_ident id) (hd :: tl)
+    iter (fun (id, expr) -> retrieve_expr cstmt expr >>= save_ident id) (hd :: tl)
   | Short_decl_one_init (fst, snd, tl, call) ->
     retrieve_expr cstmt (Expr_call call)
     >>= (function
@@ -197,7 +187,7 @@ let check_short_var_decl cstmt = function
      | Ctuple types ->
        (try
           iter
-            (fun (id, tp) -> save_local_ident id (Ctype tp))
+            (fun (id, tp) -> save_ident id (Ctype tp))
             (List.combine (fst :: snd :: tl) types)
         with
         | Invalid_argument _ ->
@@ -263,8 +253,7 @@ let check_init cstmt = function
 ;;
 
 let rec check_stmt = function
-  | Stmt_long_var_decl long_decl ->
-    check_long_var_decl check_stmt save_local_ident long_decl
+  | Stmt_long_var_decl long_decl -> check_long_var_decl check_stmt save_ident long_decl
   | Stmt_short_var_decl short_decl -> check_short_var_decl check_stmt short_decl
   | Stmt_incr id -> retrieve_ident id >>= check_eq (Ctype Type_int)
   | Stmt_decr id -> retrieve_ident id >>= check_eq (Ctype Type_int)
@@ -273,7 +262,7 @@ let rec check_stmt = function
   | Stmt_defer call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_go call -> check_func_call (retrieve_expr check_stmt) call
   | Stmt_chan_send send -> check_chan_send check_stmt send
-  | Stmt_block block -> write_env *> iter check_stmt block *> delete_env
+  | Stmt_block block -> add_env *> iter check_stmt block *> delete_env
   | Stmt_break -> return ()
   | Stmt_chan_receive chan -> retrieve_expr check_stmt chan *> return ()
   | Stmt_continue -> return ()
@@ -289,7 +278,7 @@ let rec check_stmt = function
        retrieve_expr check_stmt expr >>= check_eq return_type))
     *> return ()
   | Stmt_if if' ->
-    write_env
+    add_env
     *> check_init check_stmt if'.init
     *> (retrieve_expr check_stmt if'.cond >>= check_eq (Ctype Type_bool))
     *> iter check_stmt if'.if_body
@@ -300,7 +289,7 @@ let rec check_stmt = function
       | Some (Else_if if') -> check_stmt (Stmt_if if')
       | None -> return ())
   | Stmt_for { init; cond; post; body } ->
-    write_env
+    add_env
     *> check_init check_stmt init
     *> (match cond with
       | Some expr -> retrieve_expr check_stmt expr >>= check_eq (Ctype Type_bool)
@@ -312,18 +301,29 @@ let rec check_stmt = function
 
 let save_top_decl_funcs = function
   | Decl_func (id, args_returns_and_body) ->
-    save_global_ident id (get_afunc_type args_returns_and_body)
+    save_ident id (get_afunc_type args_returns_and_body)
   | Decl_var _ -> return ()
 ;;
 
 let check_and_save_top_decl_vars = function
   | Decl_func _ -> return ()
-  | Decl_var decl -> check_long_var_decl check_stmt save_global_ident decl
+  | Decl_var decl -> check_long_var_decl check_stmt save_ident decl
 ;;
 
 let check_top_decl_funcs = function
   | Decl_func (_, afunc) -> check_anon_func afunc check_stmt *> return ()
   | Decl_var _ -> return ()
+;;
+
+let check_main =
+  retrieve_ident "main"
+  >>= function
+  | Ctype (Type_func ([], [])) -> return ()
+  | Ctype (Type_func _) ->
+    fail
+      (Type_check_error
+         (Incorrect_main "func main must have no arguments and no return values"))
+  | _ -> fail (Type_check_error (Incorrect_main "main func not found"))
 ;;
 
 let type_check file =
@@ -332,7 +332,7 @@ let type_check file =
      *> iter check_and_save_top_decl_vars file
      *> iter check_top_decl_funcs file
      *> check_main)
-    (MapIdent.empty, [], [])
+    ([ MapIdent.empty ], [])
   |> function
   | _, res -> res
 ;;
