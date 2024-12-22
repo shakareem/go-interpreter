@@ -93,7 +93,7 @@ let%expect_test "ok: single var decl with type and wrong init " =
 
   func main() {}
   |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types:  in equation string and int |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types:  in equation int and string |}]
 ;;
 
 let%expect_test "ok: func call init with right number of elements" =
@@ -134,7 +134,7 @@ let%expect_test "err: func call one init with mismathced types" =
     func main() {}
     |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types:  in equation (int, int, int) and (bool, bool, bool) |}]
+    {| ERROR WHILE TYPECHECK WITH Mismatched types:  in equation (bool, bool, bool) and (int, int, int) |}]
 ;;
 
 let%expect_test "err: func call one init with mismathced range" =
@@ -982,7 +982,7 @@ let%expect_test "err: multidimensional array index assignment with wrong index m
     }
 |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: Number of indexes in assigment is incorrect |}]
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Number of indicies in array element assigment is incorrect |}]
 ;;
 
 let%expect_test "ok: multidimensional array index binoper" =

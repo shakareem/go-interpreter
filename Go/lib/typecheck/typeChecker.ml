@@ -62,13 +62,13 @@ let retrieve_const cstmt rexpr = function
 ;;
 
 let check_func_call rexpr (func, args) =
-  let ftype =
+  let* expected_arg_types =
     rexpr func
     >>= function
     | Ctype (Type_func (lst, _)) -> map (fun t -> return (Ctype t)) lst
     | _ -> fail (Type_check_error (Mismatched_types "Expected func type"))
   in
-  let argtypes =
+  let* actual_arg_types =
     map
       (fun arg ->
         rexpr arg
@@ -77,46 +77,41 @@ let check_func_call rexpr (func, args) =
         | t -> return t)
       args
   in
-  (argtypes
-   >>= (fun at -> ftype >>= fun ft -> return (List.length ft = List.length at))
-   >>= function
-   | true ->
-     ftype
-     >>= fun type_list -> iter2 (fun arg typ -> rexpr arg >>= check_eq typ) args type_list
-   | false -> fail (Type_check_error (Mismatched_types "Number of given args mismatched"))
-  )
-  *> return ()
+  try iter2 check_eq expected_arg_types actual_arg_types with
+  | Invalid_argument _ ->
+    fail (Type_check_error (Mismatched_types "Number of given args mismatched"))
 ;;
 
-let rec nested_array ct ind =
-  match ct, ind with
-  | x, 0 -> return x
-  | Ctype (Type_array (_, y)), ind -> nested_array (Ctype y) (ind - 1)
+let rec nested_array t depth =
+  match t, depth with
+  | t, 0 -> return t
+  | Ctype (Type_array (_, t)), depth -> nested_array (Ctype t) (depth - 1)
   | _, _ ->
     fail
-      (Type_check_error (Mismatched_types "Number of indexes in assigment is incorrect"))
+      (Type_check_error
+         (Mismatched_types "Number of indicies in array element assigment is incorrect"))
 ;;
 
 let rec retrieve_expr cstmt = function
   | Expr_const const -> retrieve_const cstmt (retrieve_expr cstmt) const
-  | Expr_un_oper (op, expr) ->
-    (match op with
-     | Unary_minus | Unary_plus -> retrieve_expr cstmt expr >>= eq_type (Ctype Type_int)
-     | Unary_not -> retrieve_expr cstmt expr >>= fun t -> eq_type t (Ctype Type_bool))
+  | Expr_un_oper (Unary_minus, expr) | Expr_un_oper (Unary_plus, expr) ->
+    retrieve_expr cstmt expr >>= eq_type (Ctype Type_int)
+  | Expr_un_oper (Unary_not, expr) ->
+    retrieve_expr cstmt expr >>= fun t -> eq_type t (Ctype Type_bool)
   | Expr_ident id -> retrieve_ident id
   | Expr_bin_oper (op, left, right) ->
-    let compare_arg_typ type1 type2 =
-      retrieve_expr cstmt type1
-      >>= fun type1 -> retrieve_expr cstmt type2 >>= eq_type type1
+    let compare_arg_typ left right =
+      let* ltype = retrieve_expr cstmt left in
+      let* rtype = retrieve_expr cstmt right in
+      eq_type ltype rtype
     in
-    let compare_operation_typ type1 type2 t = compare_arg_typ type1 type2 >>= eq_type t in
+    let compare_operation_typ left right t = compare_arg_typ left right >>= eq_type t in
     (match op with
      | Bin_sum | Bin_divide | Bin_modulus | Bin_multiply | Bin_subtract ->
-       compare_operation_typ left right (Ctype Type_int) *> return (Ctype Type_int)
+       compare_operation_typ left right (Ctype Type_int)
      | Bin_less | Bin_greater | Bin_greater_equal | Bin_less_equal ->
-       compare_operation_typ left right (Ctype Type_int) *> return (Ctype Type_bool)
-     | Bin_or | Bin_and ->
-       compare_operation_typ left right (Ctype Type_bool) *> return (Ctype Type_bool)
+       compare_operation_typ left right (Ctype Type_int)
+     | Bin_or | Bin_and -> compare_operation_typ left right (Ctype Type_bool)
      | Bin_equal | Bin_not_equal -> compare_arg_typ left right *> return (Ctype Type_bool))
   | Expr_call (func, args) ->
     check_func_call (retrieve_expr cstmt) (func, args)
@@ -147,15 +142,14 @@ let check_long_var_decl cstmt save_ident = function
   | Long_decl_mult_init (Some type', hd, tl) ->
     iter
       (fun (id, expr) ->
-        (retrieve_expr cstmt expr >>= fun t -> check_eq t (Ctype type'))
+        (retrieve_expr cstmt expr >>= check_eq (Ctype type'))
         *> save_ident id (Ctype type'))
       (hd :: tl)
   | Long_decl_mult_init (None, hd, tl) ->
     iter (fun (id, expr) -> retrieve_expr cstmt expr >>= save_ident id) (hd :: tl)
   | Long_decl_one_init (Some type', fst, snd, tl, call) ->
-    retrieve_expr cstmt (Expr_call call)
-    >>= fun t ->
-    check_eq t (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> type')))
+    (retrieve_expr cstmt (Expr_call call)
+     >>= check_eq (Ctuple (List.init (List.length (fst :: snd :: tl)) (fun _ -> type'))))
     *> iter (fun id -> save_ident id (Ctype type')) (fst :: snd :: tl)
   | Long_decl_one_init (None, fst, snd, tl, call) ->
     retrieve_expr cstmt (Expr_call call)
@@ -164,13 +158,13 @@ let check_long_var_decl cstmt save_ident = function
        fail
          (Type_check_error
             (Mismatched_types "function returns only one element in multiple var decl"))
-     | Ctuple types when List.length types = List.length (fst :: snd :: tl) ->
-       iter2 save_ident (fst :: snd :: tl) (List.map (fun t -> Ctype t) types)
-     | Ctuple _ ->
-       fail
-         (Type_check_error
-            (Mismatched_types
-               "function returns wrong number of elements in multiple var assign")))
+     | Ctuple types ->
+       (try iter2 save_ident (fst :: snd :: tl) (List.map (fun t -> Ctype t) types) with
+        | Invalid_argument _ ->
+          fail
+            (Type_check_error
+               (Mismatched_types
+                  "function returns wrong number of elements in multiple var assign"))))
 ;;
 
 let check_short_var_decl cstmt = function
@@ -214,18 +208,19 @@ let check_assign cstmt = function
   | Assign_mult_expr (hd, tl) ->
     iter
       (fun (lvalue, expr) ->
-        retrieve_lvalue 0 cstmt lvalue
-        >>= fun type1 -> retrieve_expr cstmt expr >>= check_eq type1)
+        let* expected_type = retrieve_lvalue 0 cstmt lvalue in
+        let* actual_type = retrieve_expr cstmt expr in
+        check_eq expected_type actual_type)
       (hd :: tl)
-  | Assign_one_expr (l1, l2, ls, w) ->
-    retrieve_expr cstmt (Expr_call w)
+  | Assign_one_expr (fst, snd, tl, call) ->
+    retrieve_expr cstmt (Expr_call call)
     >>= (function
      | Ctype _ -> fail (Type_check_error (Cannot_assign "Multiple return assign failed"))
      | Ctuple types ->
        (try
           iter2
             (fun lvalue t -> retrieve_lvalue 0 cstmt lvalue >>= check_eq (Ctype t))
-            (l1 :: l2 :: ls)
+            (fst :: snd :: tl)
             types
         with
         | Invalid_argument _ ->
@@ -233,8 +228,7 @@ let check_assign cstmt = function
 ;;
 
 let check_chan_send cstmt (id, expr) =
-  retrieve_expr cstmt expr
-  >>= fun expr_type ->
+  let* expr_type = retrieve_expr cstmt expr in
   retrieve_ident id
   >>= function
   | Ctype (Type_chan (_, chan_type)) -> check_eq expr_type (Ctype chan_type)
