@@ -21,13 +21,6 @@ let check_anon_func afunc cstmt =
   *> return (get_afunc_type afunc)
 ;;
 
-let retrieve_const cstmt = function
-  | Const_array (size, t, _) -> return (Ctype (Type_array (size, t)))
-  | Const_int _ -> return (Ctype Type_int)
-  | Const_string _ -> return (Ctype Type_string)
-  | Const_func anon_func -> check_anon_func anon_func cstmt
-;;
-
 let check_main =
   read_global_ident "main"
   >>= function
@@ -46,9 +39,25 @@ let eq_type t1 t2 =
 ;;
 
 let check_eq t1 t2 =
-  match equal_ctype t1 t2 with
-  | true -> return ()
-  | false -> fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
+  if equal_ctype t1 t2
+  then return ()
+  else fail (Type_check_error (Mismatched_types "Types mismatched in equation"))
+;;
+
+let retrieve_const cstmt rexpr = function
+  | Const_array (size, type', inits) when List.length inits <= size ->
+    iter
+      (fun init ->
+        rexpr init
+        >>= function
+        | Ctuple _ -> fail (Type_check_error (Mismatched_types "Expected single type"))
+        | t -> check_eq t (Ctype type'))
+      inits
+    *> return (Ctype (Type_array (size, type')))
+  | Const_array _ -> fail (Type_check_error Check_failed)
+  | Const_int _ -> return (Ctype Type_int)
+  | Const_string _ -> return (Ctype Type_string)
+  | Const_func anon_func -> check_anon_func anon_func cstmt
 ;;
 
 let check_func_call rexpr (func, args) =
@@ -79,7 +88,7 @@ let check_func_call rexpr (func, args) =
 ;;
 
 let rec retrieve_expr cstmt = function
-  | Expr_const const -> retrieve_const cstmt const
+  | Expr_const const -> retrieve_const cstmt (retrieve_expr cstmt) const
   | Expr_un_oper (op, expr) ->
     (match op with
      | Unary_minus | Unary_plus ->
