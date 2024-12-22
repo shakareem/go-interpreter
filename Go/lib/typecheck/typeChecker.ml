@@ -287,35 +287,37 @@ let rec check_stmt = function
     *> delete_env
 ;;
 
-let check_top_decl_funcs = function
+let save_top_decl_funcs = function
   | Decl_func (id, args_returns_and_body) ->
     save_global_ident id (get_afunc_type args_returns_and_body)
   | Decl_var _ -> return ()
 ;;
 
-let check_top_decl_vars = function
+let check_and_save_top_decl_vars = function
   | Decl_func _ -> return ()
   | Decl_var decl -> check_long_var_decl check_stmt save_global_ident decl
 ;;
 
-let check_top_decl = function
-  | Decl_func (_, y) -> check_anon_func y check_stmt *> return ()
+let check_top_decl_funcs = function
+  | Decl_func (_, afunc) -> check_anon_func afunc check_stmt *> return ()
   | Decl_var _ -> return ()
 ;;
 
 let type_check file =
   run
-    (iter check_top_decl_funcs file
-     *> iter check_top_decl_vars file
-     *> iter check_top_decl file
+    (iter save_top_decl_funcs file
+     *> iter check_and_save_top_decl_vars file
+     *> iter check_top_decl_funcs file
      *> check_main)
     (MapIdent.empty, [], [])
+  |> function
+  | _, res -> res
 ;;
 
 let pp ast =
   match type_check ast with
-  | _, Result.Ok _ -> print_endline "CORRECT"
-  | _, Result.Error err ->
+  | Result.Ok _ -> print_endline "CORRECT"
+  | Result.Error err ->
     prerr_string "ERROR WHILE TYPECHECK WITH ";
     (match err with
      | Type_check_error Check_failed -> prerr_endline "Check failed"

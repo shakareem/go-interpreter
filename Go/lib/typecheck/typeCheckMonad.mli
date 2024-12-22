@@ -41,8 +41,7 @@ module CheckMonad : sig
 
   val return : 'a -> 'a t
   val fail : Errors.error -> 'b t
-
-  val ( >>= ) : 'a t -> ('a -> 'b t) -> 'b t 
+  val ( >>= ) : 'a t -> ('a -> 'b t) -> 'b t
   val ( *> ) : 'a t -> 'b t -> 'b t
   val iter : ('a -> unit t) -> 'a list -> unit t
   val iter2 : ('a -> 'b -> unit t) -> 'a list -> 'b list -> unit t
