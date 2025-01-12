@@ -11,9 +11,34 @@ let get_afunc_type afunc =
   Ctype (Type_func (List.map (fun (_, snd) -> snd) afunc.args, afunc.returns))
 ;;
 
+let rec check_return body =
+  List.mem
+    true
+    (List.map
+       (function
+         | Stmt_return _ -> true
+         | Stmt_if if' ->
+           check_return if'.if_body
+           && (fun body ->
+                match body with
+                | Some (Else_block body) -> check_return body
+                | Some (Else_if if') -> check_return [ Stmt_if if' ]
+                | None -> false)
+                if'.else_body
+         | Stmt_for for' -> check_return for'.body
+         | _ -> false)
+       body)
+;;
+
 let check_anon_func afunc cstmt =
   let save_args = iter (fun (id, t) -> save_ident id (Ctype t)) afunc.args in
   add_env
+  *> (match List.compare_length_with afunc.returns 0 = 0 with
+    | false ->
+      (match check_return afunc.body with
+       | true -> return ()
+       | false -> fail (Type_check_error (Missing_return "Missing return")))
+    | true -> return ())
   *> save_func (Ctuple afunc.returns)
   *> save_args
   *> iter cstmt afunc.body
@@ -133,8 +158,8 @@ let rec retrieve_expr cstmt rarg = function
 ;;
 
 let rec retrieve_arg cstmt = function
-  | Arg_expr x -> retrieve_expr cstmt (retrieve_arg cstmt) x
-  | Arg_type _ -> return CgenericType
+  | Arg_expr exp -> retrieve_expr cstmt (retrieve_arg cstmt) exp
+  | Arg_type t -> return (CgenT t)
 ;;
 
 let check_long_var_decl cstmt save_ident = function
@@ -167,7 +192,7 @@ let check_long_var_decl cstmt save_ident = function
             (Type_check_error
                (Mismatched_types
                   "function returns wrong number of elements in multiple var assign")))
-     | CgenericType -> fail (Type_check_error Check_failed))
+     | _ -> fail (Type_check_error Check_failed))
 ;;
 
 let check_short_var_decl cstmt = function
@@ -194,7 +219,7 @@ let check_short_var_decl cstmt = function
             (Type_check_error
                (Mismatched_types
                   "function returns wrong number of elements in multiple var decl")))
-     | CgenericType -> fail (Type_check_error Check_failed))
+     | _ -> fail (Type_check_error Check_failed))
 ;;
 
 let rec retrieve_lvalue ind cstmt = function
@@ -232,7 +257,7 @@ let check_assign cstmt = function
         with
         | Invalid_argument _ ->
           fail (Type_check_error (Cannot_assign "Multiple return assign failed")))
-     | CgenericType -> fail (Type_check_error Check_failed))
+     | _ -> fail (Type_check_error Check_failed))
 ;;
 
 let check_chan_send cstmt (id, expr) =

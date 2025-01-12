@@ -9,6 +9,7 @@ type type_check_error =
   | Undefined_ident of string
   | Mismatched_types of string
   | Cannot_assign of string
+  | Missing_return of string
 [@@deriving show { with_path = false }]
 
 type error = Type_check_error of type_check_error

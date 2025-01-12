@@ -22,8 +22,8 @@ let pp str =
           prerr_endline ("Undefined ident error: " ^ msg)
         | Type_check_error (Mismatched_types msg) ->
           prerr_endline ("Mismatched types: " ^ msg)
-        | Type_check_error (Cannot_assign msg) ->
-          prerr_endline ("Mismatched types: " ^ msg)))
+        | Type_check_error (Cannot_assign msg) -> prerr_endline ("Cannot assign: " ^ msg)
+        | Type_check_error (Missing_return msg) -> prerr_endline ("Missing return: " ^ msg)))
   | Error _ -> print_endline ": syntax error"
 ;;
 
@@ -49,7 +49,7 @@ let%expect_test "err: multiple main" =
 
 let%expect_test "err: main with returns" =
   pp {|
-  func main() bool {}
+  func main() bool { return true}
   |};
   [%expect
     {| ERROR WHILE TYPECHECK WITH Incorrect main error: func main must have no arguments and no return values |}]
@@ -276,7 +276,7 @@ let%expect_test "err: incorrect var multiple assign" =
     |};
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Mismatched types: Multiple return assign failed |}]
+    ERROR WHILE TYPECHECK WITH Cannot assign: Multiple return assign failed |}]
 ;;
 
 let%expect_test "ok: correct var multiple assign" =
@@ -335,9 +335,9 @@ let%expect_test "ok: correct declarations #1" =
     {|
     func main() {}
 
-    func foo(a int, b int, c int) bool {}
+    func foo(a int, b int, c int) {}
 
-    func foo1(a int, b int, c int) bool {}   |};
+    func foo1(a int, b int, c int) {}   |};
   [%expect {| CORRECT |}]
 ;;
 
@@ -388,7 +388,7 @@ let%expect_test "err: undefined var inc" =
 
     func main() {}
 
-    func foo(a1 int, c int, b int) bool {
+    func foo(a1 int, c int, b int) {
         a2++
     }  
     |};
@@ -400,7 +400,7 @@ let%expect_test "ok: global var decl before it's use in code" =
     {|
     var x int
 
-    func foo(a1 int, c int, b int) bool {
+    func foo(a1 int, c int, b int){
         x++
     }  
 
@@ -412,7 +412,7 @@ let%expect_test "ok: global var decl before it's use in code" =
 let%expect_test "ok: global var decl after it's use in code" =
   pp
     {|
-    func foo(a1 int, c int, b int) bool {
+    func foo(a1 int, c int, b int) {
         x++
     } 
 
@@ -421,6 +421,59 @@ let%expect_test "ok: global var decl after it's use in code" =
     func main() {}
     |};
   [%expect {| CORRECT |}]
+;;
+
+let%expect_test "fail: missing return statement" =
+  pp
+    {|
+    func foo(a1 int, c int, b int) bool {
+        x++
+    } 
+
+    var x int
+
+    func main() {}
+    |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Missing return: Missing return |}]
+;;
+
+let%expect_test "ok: correct returns in different branches of if" =
+  pp
+    {|
+    func foo(a1 int, c int, b int) int {
+        if c == 1 {
+		      return 1
+				} else { 
+          if c == 2 {
+            return 3
+          } else {
+            return 2
+          }
+	      }
+    } 
+    func main() {}
+    |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "fail: missing return in nested branch of if" =
+  pp
+    {|
+    var x int
+    func foo(a1 int, c int, b int) int {
+        if c == 1 {
+		      return 1
+				} else { 
+          if c == 2 {
+            return 3
+          } else {
+            x++
+          }
+	      }
+    } 
+    func main() {}
+    |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Missing return: Missing return |}]
 ;;
 
 let%expect_test "err: undefined func call" =

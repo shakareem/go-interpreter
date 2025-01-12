@@ -17,10 +17,17 @@ module MapIdent : sig
   val empty : 'a t
 end
 
+type polymorphic_call =
+  | Make
+  | Print
+  | Panic
+  | Len
+
 type ctype =
   | Ctype of Ast.type'
   | Ctuple of Ast.type' list (** Used to check multiple returns of a function *)
-  | CgenericType
+  | CgenT of Ast.type'
+  | Cpolymorphic of polymorphic_call
 
 val equal_ctype : ctype -> ctype -> Ppx_deriving_runtime.bool
 
