@@ -20,6 +20,7 @@ end
 type ctype =
   | Ctype of Ast.type'
   | Ctuple of Ast.type' list (** Used to check multiple returns of a function *)
+  | CgenericType
 
 val equal_ctype : ctype -> ctype -> Ppx_deriving_runtime.bool
 

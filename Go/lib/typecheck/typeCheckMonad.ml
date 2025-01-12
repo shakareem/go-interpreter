@@ -12,9 +12,15 @@ end
 
 module MapIdent = Map.Make (Ident)
 
+type polymorphic_call =
+  | Make
+  | Print
+[@@deriving show { with_path = false }, eq]
+
 type ctype =
   | Ctype of type'
   | Ctuple of type' list
+  | CgenericType
 [@@deriving show { with_path = false }, eq]
 
 type env = ctype MapIdent.t list
