@@ -15,8 +15,10 @@ module MapIdent = Map.Make (Ident)
 type polymorphic_call =
   | Make
   | Print
+  | Println
   | Panic
   | Len
+  | Close
 [@@deriving show { with_path = false }, eq]
 
 type ctype =

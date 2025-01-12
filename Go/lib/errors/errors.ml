@@ -10,6 +10,7 @@ type type_check_error =
   | Mismatched_types of string (*Mismatched types in binoper/assign/return...*)
   | Cannot_assign of string (*Error with assigning a multiple-return value*)
   | Missing_return of string (*Error with missing return of values in func*)
+  | Invalid_operation of string (*Error with doing some invalid operation*)
 [@@deriving show { with_path = false }]
 
 type error = Type_check_error of type_check_error

@@ -20,8 +20,10 @@ end
 type polymorphic_call =
   | Make
   | Print
+  | Println
   | Panic
   | Len
+  | Close
 
 type ctype =
   | Ctype of Ast.type'

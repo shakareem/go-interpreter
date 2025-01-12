@@ -23,7 +23,9 @@ let pp str =
         | Type_check_error (Mismatched_types msg) ->
           prerr_endline ("Mismatched types: " ^ msg)
         | Type_check_error (Cannot_assign msg) -> prerr_endline ("Cannot assign: " ^ msg)
-        | Type_check_error (Missing_return msg) -> prerr_endline ("Missing return: " ^ msg)))
+        | Type_check_error (Missing_return msg) -> prerr_endline ("Missing return: " ^ msg)
+        | Type_check_error (Invalid_operation msg) ->
+          prerr_endline ("Missing return: " ^ msg)))
   | Error _ -> print_endline ": syntax error"
 ;;
 
@@ -401,10 +403,19 @@ let%expect_test "ok: global var decl before it's use in code" =
     var x int
 
     func foo(a1 int, c int, b int){
-        x++
+      x++
     }  
 
     func main() {}
+    |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: redefined int example" =
+  pp {|
+    var int string 
+    func main() {}
+
     |};
   [%expect {| CORRECT |}]
 ;;
@@ -1138,48 +1149,48 @@ let%expect_test "ok: correct closure" =
   pp
     {|
 
-func adder() func(int) int {
-	sum := 0
-	return func(x int) int {
-		sum = sum + x
-		return sum
-	}
-}
+    func adder() func(int) int {
+      sum := 0
+      return func(x int) int {
+        sum = sum + x
+        return sum
+      }
+    }
 
-func f(a int) { return }
+    func f(a int) { return }
 
-func main() {
-  pos, neg := adder(), adder()
-	for i := 0; i < 10; i++ {
-		a := pos(i)
-		f(a)
-		f(neg(-2 * i))
-	}
-}|};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: bool and int |}]
+    func main() {
+      pos, neg := adder(), adder()
+      for i := 0; i < 10; i++ {
+        a := pos(i)
+        f(a)
+        f(neg(-2 * i))
+      }
+    }|};
+  [%expect {| CORRECT |}]
 ;;
 
 let%expect_test "err: mismatched type in closure" =
   pp
     {|
 
-func adder() func(int) int {
-	sum := 0
-	return func(x string) int {
-		return x
-	}
-}
+      func adder() func(int) int {
+        sum := 0
+        return func(x string) int {
+          return x
+        }
+      }
 
-func f(a int) { return }
+      func f(a int) { return }
 
-func main() {
-  pos, neg := adder(), adder()
-	for i := 0; i < 10; i++ {
-		a := pos(i)
-		f(a)
-		f(neg(-2 * i))
-	}
-}|};
+      func main() {
+        pos, neg := adder(), adder()
+        for i := 0; i < 10; i++ {
+          a := pos(i)
+          f(a)
+          f(neg(-2 * i))
+        }
+      }|};
   [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: int and string |}]
 ;;
 
@@ -1187,23 +1198,23 @@ let%expect_test "err: mismatched type in closure func return" =
   pp
     {|
 
-func adder() func(int) int {
-	sum := 0
-	return func(x string) int {
-		return sum + 1
-	}
-}
+      func adder() func(int) int {
+        sum := 0
+        return func(x string) int {
+          return sum + 1
+        }
+      }
 
-func f(a int) { return }
+      func f(a int) { return }
 
-func main() {
-  pos, neg := adder(), adder()
-	for i := 0; i < 10; i++ {
-		a := pos(i)
-		f(a)
-		f(neg(-2 * i))
-	}
-}|};
+      func main() {
+        pos, neg := adder(), adder()
+        for i := 0; i < 10; i++ {
+          a := pos(i)
+          f(a)
+          f(neg(-2 * i))
+        }
+      }|};
   [%expect
     {| ERROR WHILE TYPECHECK WITH Mismatched types: func(int) int and func(string) int |}]
 ;;
@@ -1212,23 +1223,23 @@ let%expect_test "err: mismatched type inside return of func in closure" =
   pp
     {|
 
-func adder() func(int) int {
-	sum := 0
-	return func(x int) int {
-		return "t"
-	}
-}
+      func adder() func(int) int {
+        sum := 0
+        return func(x int) int {
+          return "t"
+        }
+      }
 
-func f(a int) { return }
+      func f(a int) { return }
 
-func main() {
-  pos, neg := adder(), adder()
-	for i := 0; i < 10; i++ {
-		a := pos(i)
-		f(a)
-		f(neg(-2 * i))
-	}
-}|};
+      func main() {
+        pos, neg := adder(), adder()
+        for i := 0; i < 10; i++ {
+          a := pos(i)
+          f(a)
+          f(neg(-2 * i))
+        }
+      }|};
   [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: int and string |}]
 ;;
 
@@ -1236,22 +1247,56 @@ let%expect_test "err: mismatched func returns of created func" =
   pp
     {|
 
-func adder() func(int) int {
-	sum := 0
-	return func(x int) int {
-		return sum + x
-	}
-}
+      func adder() func(int) int {
+        sum := 0
+        return func(x int) int {
+          return sum + x
+        }
+      }
 
-func f(a string) { return }
+      func f(a string) { return }
 
-func main() {
-  pos, neg := adder(), adder()
-	for i := 0; i < 10; i++ {
-		a := pos(i)
-		f(4)
-		f(neg(-2 * i))
-	}
-}|};
-  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: bool and int |}]
+      func main() {
+        pos, neg := adder(), adder()
+        for i := 0; i < 10; i++ {
+          a := pos(i)
+          f(4)
+          f(neg(-2 * i))
+        }
+      }|};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: string and int |}]
+;;
+
+let%expect_test "ok: correct make & print usage" =
+  pp
+    {|
+    func sum(c chan int) {
+      sum := 1
+      c <- sum
+    }
+
+    func main() {
+      c := make(chan int)
+      sum(c)
+      x, y := <-c, <-c 
+      print(x,y)
+    } |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: incorrect send after make make" =
+  pp
+    {|
+    func sum(c chan string) {
+      sum := 1
+      c <- sum
+    }
+
+    func main() {
+      c := make(chan string)
+      sum(c)
+      x, y := <-c, <-c 
+      print(x,y)
+    } |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: int and string |}]
 ;;

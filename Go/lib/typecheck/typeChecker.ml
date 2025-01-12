@@ -81,13 +81,12 @@ let retrieve_const cstmt rexpr = function
   | Const_func anon_func -> check_anon_func anon_func cstmt
 ;;
 
+let check_generic_type = function
+  | CgenT _ -> fail (Type_check_error (Mismatched_types "Generic type in wrorng place"))
+  | _ -> return ()
+;;
+
 let check_func_call rexpr rarg (func, args) =
-  let* ftype =
-    rexpr func
-    >>= function
-    | Ctype (Type_func (lst, _)) -> map (fun t -> return (Ctype t)) lst
-    | _ -> fail (Type_check_error (Mismatched_types "Expected func type"))
-  in
   let* actual_arg_types =
     map
       (fun arg ->
@@ -96,6 +95,46 @@ let check_func_call rexpr rarg (func, args) =
         | Ctuple _ -> fail (Type_check_error (Mismatched_types "Expected single type"))
         | t -> return t)
       args
+  in
+  let* ftype =
+    rexpr func
+    >>= function
+    | Ctype (Type_func (lst, _)) -> map (fun t -> return (Ctype t)) lst
+    | Cpolymorphic Print | Cpolymorphic Println | Cpolymorphic Panic ->
+      iter check_generic_type actual_arg_types *> return actual_arg_types
+    | Cpolymorphic Make ->
+      (match actual_arg_types with
+       | [] ->
+         fail
+           (Type_check_error (Invalid_operation "Make should take at least 1 argument"))
+       | lst ->
+         (match List.hd lst with
+          | CgenT _ -> iter check_generic_type (List.tl lst) *> return actual_arg_types
+          | _ ->
+            fail
+              (Type_check_error
+                 (Invalid_operation "Make should take some type as 1st argument"))))
+    | Cpolymorphic Close ->
+      (match actual_arg_types with
+       | [] ->
+         fail
+           (Type_check_error (Invalid_operation "Make should take at least 1 argument"))
+       | [ x ] ->
+         (match x with
+          | Ctype (Type_chan (x, y)) -> return [ Ctype (Type_chan (x, y)) ]
+          | _ ->
+            fail
+              (Type_check_error
+                 (Invalid_operation "Close should take chan type as 1st argument")))
+       | _ ->
+         fail (Type_check_error (Mismatched_types "Close should take only 1 argument")))
+    | Cpolymorphic Len ->
+      (match actual_arg_types with
+       | [ Ctype Type_string ] -> return [ Ctype Type_string ]
+       | [ Ctype (Type_array (x, y)) ] -> return [ Ctype (Type_array (x, y)) ]
+       | _ ->
+         fail (Type_check_error (Mismatched_types "len takes only string and array args")))
+    | _ -> fail (Type_check_error (Mismatched_types "Expected func type"))
   in
   try iter2 check_eq ftype actual_arg_types with
   | Invalid_argument _ ->
@@ -130,8 +169,9 @@ let rec retrieve_expr cstmt rarg = function
      | Bin_sum | Bin_divide | Bin_modulus | Bin_multiply | Bin_subtract ->
        compare_operation_typ left right (Ctype Type_int)
      | Bin_less | Bin_greater | Bin_greater_equal | Bin_less_equal ->
-       compare_operation_typ left right (Ctype Type_int)
-     | Bin_or | Bin_and -> compare_operation_typ left right (Ctype Type_bool)
+       compare_operation_typ left right (Ctype Type_int) *> return (Ctype Type_bool)
+     | Bin_or | Bin_and ->
+       compare_operation_typ left right (Ctype Type_bool) *> return (Ctype Type_bool)
      | Bin_equal | Bin_not_equal -> compare_arg_typ left right *> return (Ctype Type_bool))
   | Expr_call (func, args) ->
     check_func_call (retrieve_expr cstmt rarg) rarg (func, args)
@@ -140,6 +180,14 @@ let rec retrieve_expr cstmt rarg = function
     >>= (function
      | Ctype (Type_func (_, fst :: snd :: tl)) -> return (Ctuple (fst :: snd :: tl))
      | Ctype (Type_func (_, hd :: _)) -> return (Ctype hd)
+     | Cpolymorphic Print | Cpolymorphic Close | Cpolymorphic Println ->
+       fail
+         (Type_check_error (Invalid_operation "print/println/close func makes no return"))
+     | Cpolymorphic Len -> return (Ctype Type_int)
+     | Cpolymorphic Make ->
+       (match List.hd args with
+        | Arg_type t -> return (Ctype t)
+        | _ -> fail (Type_check_error Check_failed))
      | _ ->
        fail (Type_check_error (Mismatched_types "Function without returns in expression")))
   | Expr_chan_receive chan ->
@@ -374,6 +422,12 @@ let type_check file =
   run
     (save_ident "true" (Ctype Type_bool)
      *> save_ident "false" (Ctype Type_bool)
+     *> save_ident "make" (Cpolymorphic Make)
+     *> save_ident "print" (Cpolymorphic Print)
+     *> save_ident "panic" (Cpolymorphic Panic)
+     *> save_ident "len" (Cpolymorphic Len)
+     *> save_ident "close" (Cpolymorphic Close)
+     *> save_ident "println" (Cpolymorphic Println)
      *> add_env
      *> iter save_top_decl_funcs file
      *> iter check_and_save_top_decl_vars file
