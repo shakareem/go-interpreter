@@ -134,6 +134,10 @@ let check_func_call rexpr rarg (func, args) =
        | [ Ctype (Type_array (x, y)) ] -> return [ Ctype (Type_array (x, y)) ]
        | _ ->
          fail (Type_check_error (Mismatched_types "len takes only string and array args")))
+    | Cpolymorphic Recover ->
+      (match actual_arg_types with
+       | [] -> return []
+       | _ -> fail (Type_check_error (Mismatched_types "recover takes no args")))
     | _ -> fail (Type_check_error (Mismatched_types "Expected func type"))
   in
   try iter2 check_eq ftype actual_arg_types with
@@ -210,17 +214,41 @@ let rec retrieve_arg cstmt = function
   | Arg_type t -> return (CgenT t)
 ;;
 
+let check_nil arg possible_nil =
+  match possible_nil with
+  | Cpolymorphic Nil ->
+    (match arg with
+     | Ctype (Type_chan (x, y)) -> return (Ctype (Type_chan (x, y)))
+     | Ctype (Type_func (x, y)) -> return (Ctype (Type_func (x, y)))
+     | t ->
+       fail
+         (Type_check_error
+            (Mismatched_types
+               (Printf.sprintf "nil type cannot be assigned to %s" (print_type t)))))
+  | _ -> return possible_nil
+;;
+
+let check_nil_fail = function
+  | Cpolymorphic Nil ->
+    fail
+      (Type_check_error (Mismatched_types (Printf.sprintf "nil type cannot be used here")))
+  | x -> return x
+;;
+
 let check_long_var_decl cstmt save_ident = function
   | Long_decl_no_init (t, hd, tl) -> iter (fun id -> save_ident id (Ctype t)) (hd :: tl)
   | Long_decl_mult_init (Some type', hd, tl) ->
     iter
       (fun (id, expr) ->
-        (retrieve_expr cstmt (retrieve_arg cstmt) expr >>= check_eq (Ctype type'))
+        (retrieve_expr cstmt (retrieve_arg cstmt) expr
+         >>= (fun t -> check_nil (Ctype type') t)
+         >>= check_eq (Ctype type'))
         *> save_ident id (Ctype type'))
       (hd :: tl)
   | Long_decl_mult_init (None, hd, tl) ->
     iter
-      (fun (id, expr) -> retrieve_expr cstmt (retrieve_arg cstmt) expr >>= save_ident id)
+      (fun (id, expr) ->
+        retrieve_expr cstmt (retrieve_arg cstmt) expr >>= check_nil_fail >>= save_ident id)
       (hd :: tl)
   | Long_decl_one_init (Some type', fst, snd, tl, call) ->
     (retrieve_expr cstmt (retrieve_arg cstmt) (Expr_call call)
@@ -246,7 +274,16 @@ let check_long_var_decl cstmt save_ident = function
 let check_short_var_decl cstmt = function
   | Short_decl_mult_init (hd, tl) ->
     iter
-      (fun (id, expr) -> retrieve_expr cstmt (retrieve_arg cstmt) expr >>= save_ident id)
+      (fun (id, expr) ->
+        retrieve_expr cstmt (retrieve_arg cstmt) expr
+        >>= (fun ct ->
+              match ct with
+              | Ctype t -> return (Ctype t)
+              | _ ->
+                fail
+                  (Type_check_error
+                     (Mismatched_types "Incarrect assignment in short var decl")))
+        >>= save_ident id)
       (hd :: tl)
   | Short_decl_one_init (fst, snd, tl, call) ->
     retrieve_expr cstmt (retrieve_arg cstmt) (Expr_call call)
@@ -267,6 +304,10 @@ let check_short_var_decl cstmt = function
             (Type_check_error
                (Mismatched_types
                   "function returns wrong number of elements in multiple var decl")))
+     | Cpolymorphic Nil ->
+       fail
+         (Type_check_error
+            (Invalid_operation "Cannot assign nil in short var declaration"))
      | _ -> fail (Type_check_error Check_failed))
 ;;
 
@@ -426,8 +467,10 @@ let type_check file =
      *> save_ident "print" (Cpolymorphic Print)
      *> save_ident "panic" (Cpolymorphic Panic)
      *> save_ident "len" (Cpolymorphic Len)
+     *> save_ident "recover" (Cpolymorphic Recover)
      *> save_ident "close" (Cpolymorphic Close)
      *> save_ident "println" (Cpolymorphic Println)
+     *> save_ident "nil" (Cpolymorphic Nil)
      *> add_env
      *> iter save_top_decl_funcs file
      *> iter check_and_save_top_decl_vars file

@@ -24,6 +24,8 @@ type polymorphic_call =
   | Panic
   | Len
   | Close
+  | Nil
+  | Recover
 
 type ctype =
   | Ctype of Ast.type'

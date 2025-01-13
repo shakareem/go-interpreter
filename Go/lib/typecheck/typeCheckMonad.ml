@@ -19,6 +19,8 @@ type polymorphic_call =
   | Panic
   | Len
   | Close
+  | Nil
+  | Recover
 [@@deriving show { with_path = false }, eq]
 
 type ctype =

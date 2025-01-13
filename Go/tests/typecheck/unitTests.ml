@@ -105,7 +105,7 @@ let%expect_test "ok: single var decl with type and right init " =
   [%expect {| CORRECT |}]
 ;;
 
-let%expect_test "ok: single var decl with type and wrong init " =
+let%expect_test "err: single var decl with type and wrong init " =
   pp {|
   var a int = ""
 
@@ -1285,17 +1285,15 @@ let%expect_test "ok: predeclared make, close & print usage" =
   [%expect {| CORRECT |}]
 ;;
 
-(* ошибка *)
 let%expect_test "ok: predeclared make, close & print usage" =
   pp {|
     func main() {
       defer recover()
       panic("")
     } |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: recover is not defined |}]
+  [%expect {| CORRECT |}]
 ;;
 
-(* ошибка *)
 let%expect_test "ok: predeclared nil, true, false" =
   pp
     {|
@@ -1309,17 +1307,17 @@ let%expect_test "ok: predeclared nil, true, false" =
       }
     }
     |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: nil is not defined |}]
+  [%expect {| CORRECT |}]
 ;;
 
-(* ошиббка *)
 let%expect_test "err: untyped nil" =
   pp {|
     func main() {
       a := nil
     }
     |};
-  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: nil is not defined |}]
+  [%expect
+    {| ERROR WHILE TYPECHECK WITH Mismatched types: Incarrect assignment in short var decl |}]
 ;;
 
 let%expect_test "ok: incorrect send after make make" =
@@ -1355,12 +1353,12 @@ let%expect_test "ok: redeclaration of predeclared print" =
 let%expect_test "err: redeclaration of predeclared make" =
   pp
     {|
-    func print(a int) int {
+    func make(a int) int {
       return a
     }
 
     func main() {
-      print(5)
+      make(5)
     } |};
   [%expect {| CORRECT |}]
 ;;
