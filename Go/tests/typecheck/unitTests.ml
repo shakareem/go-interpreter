@@ -1267,7 +1267,7 @@ let%expect_test "err: mismatched func returns of created func" =
   [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: string and int |}]
 ;;
 
-let%expect_test "ok: correct make & print usage" =
+let%expect_test "ok: predeclared make, close & print usage" =
   pp
     {|
     func sum(c chan int) {
@@ -1278,10 +1278,48 @@ let%expect_test "ok: correct make & print usage" =
     func main() {
       c := make(chan int)
       sum(c)
-      x, y := <-c, <-c 
+      x, y := <-c, <-c
+      close(c)
       print(x,y)
     } |};
   [%expect {| CORRECT |}]
+;;
+
+(* ошибка *)
+let%expect_test "ok: predeclared make, close & print usage" =
+  pp {|
+    func main() {
+      defer recover()
+      panic("")
+    } |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: recover is not defined |}]
+;;
+
+(* ошибка *)
+let%expect_test "ok: predeclared nil, true, false" =
+  pp
+    {|
+    func main() {
+      var a chan int = nil
+      var b func() = nil
+
+      cond := true
+      if cond {
+        cond = false
+      }
+    }
+    |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: nil is not defined |}]
+;;
+
+(* ошиббка *)
+let%expect_test "err: untyped nil" =
+  pp {|
+    func main() {
+      a := nil
+    }
+    |};
+  [%expect {| ERROR WHILE TYPECHECK WITH Undefined ident error: nil is not defined |}]
 ;;
 
 let%expect_test "ok: incorrect send after make make" =
@@ -1299,4 +1337,30 @@ let%expect_test "ok: incorrect send after make make" =
       print(x,y)
     } |};
   [%expect {| ERROR WHILE TYPECHECK WITH Mismatched types: int and string |}]
+;;
+
+let%expect_test "ok: redeclaration of predeclared print" =
+  pp
+    {|
+    func print(a int) int {
+      return a
+    }
+
+    func main() {
+      print(5)
+    } |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: redeclaration of predeclared make" =
+  pp
+    {|
+    func print(a int) int {
+      return a
+    }
+
+    func main() {
+      print(5)
+    } |};
+  [%expect {| CORRECT |}]
 ;;

@@ -82,7 +82,7 @@ let retrieve_const cstmt rexpr = function
 ;;
 
 let check_generic_type = function
-  | CgenT _ -> fail (Type_check_error (Mismatched_types "Generic type in wrorng place"))
+  | CgenT _ -> fail (Type_check_error (Mismatched_types "Generic type in wrong place"))
   | _ -> return ()
 ;;
 
