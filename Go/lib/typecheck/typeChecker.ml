@@ -219,7 +219,7 @@ let check_nil arg possible_nil =
   | Cpolymorphic Nil ->
     (match arg with
      | Ctype (Type_chan t) -> return (Ctype (Type_chan t))
-     | Ctype (Type_func (x, y)) -> return (Ctype (Type_func (x, y)))
+     | Ctype (Type_func (args, returns)) -> return (Ctype (Type_func (args, returns)))
      | t ->
        fail
          (Type_check_error
@@ -228,7 +228,7 @@ let check_nil arg possible_nil =
   | _ -> return possible_nil
 ;;
 
-let check_nil_fail = function
+let fail_if_nil = function
   | Cpolymorphic Nil ->
     fail
       (Type_check_error (Mismatched_types (Printf.sprintf "nil type cannot be used here")))
@@ -248,7 +248,7 @@ let check_long_var_decl cstmt save_ident = function
   | Long_decl_mult_init (None, hd, tl) ->
     iter
       (fun (id, expr) ->
-        retrieve_expr cstmt (retrieve_arg cstmt) expr >>= check_nil_fail >>= save_ident id)
+        retrieve_expr cstmt (retrieve_arg cstmt) expr >>= fail_if_nil >>= save_ident id)
       (hd :: tl)
   | Long_decl_one_init (Some type', fst, snd, tl, call) ->
     (retrieve_expr cstmt (retrieve_arg cstmt) (Expr_call call)
@@ -334,6 +334,7 @@ let check_assign cstmt = function
       (fun (lvalue, expr) ->
         let* expected_type = retrieve_lvalue 0 cstmt lvalue in
         let* actual_type = retrieve_expr cstmt (retrieve_arg cstmt) expr in
+        let* actual_type = check_nil expected_type actual_type in
         check_eq expected_type actual_type)
       (hd :: tl)
   | Assign_one_expr (fst, snd, tl, call) ->

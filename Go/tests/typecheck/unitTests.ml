@@ -1363,3 +1363,24 @@ let%expect_test "err: redeclaration of predeclared make" =
     } |};
   [%expect {| CORRECT |}]
 ;;
+
+(* ошибка, но мб можно забить *)
+let%expect_test "err: assignment to toplevel function" =
+  pp {|
+    func foo() {}
+
+    func main() {
+      foo = nil
+    } |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: assignment to global variable with a function type" =
+  pp {|
+    var foo = func() {}
+
+    func main() {
+      foo = nil
+    } |};
+  [%expect {| CORRECT |}]
+;;
