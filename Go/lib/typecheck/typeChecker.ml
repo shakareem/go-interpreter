@@ -279,10 +279,14 @@ let check_short_var_decl cstmt = function
         >>= (fun ct ->
               match ct with
               | Ctype t -> return (Ctype t)
+              | Cpolymorphic Nil ->
+                fail
+                  (Type_check_error
+                     (Invalid_operation "Cannot assign nil in short var declaration"))
               | _ ->
                 fail
                   (Type_check_error
-                     (Mismatched_types "Incarrect assignment in short var decl")))
+                     (Mismatched_types "Incorrect assignment in short var decl")))
         >>= save_ident id)
       (hd :: tl)
   | Short_decl_one_init (fst, snd, tl, call) ->

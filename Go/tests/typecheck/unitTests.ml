@@ -1285,10 +1285,10 @@ let%expect_test "ok: predeclared make, close & print usage" =
   [%expect {| CORRECT |}]
 ;;
 
-let%expect_test "ok: predeclared make, close & print usage" =
+let%expect_test "ok: predeclared panic & recover" =
   pp {|
     func main() {
-      defer recover()
+      defer func() { recover() }()
       panic("")
     } |};
   [%expect {| CORRECT |}]
@@ -1317,10 +1317,10 @@ let%expect_test "err: untyped nil" =
     }
     |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Mismatched types: Incarrect assignment in short var decl |}]
+    {| ERROR WHILE TYPECHECK WITH Missing return: Cannot assign nil in short var declaration |}]
 ;;
 
-let%expect_test "ok: incorrect send after make make" =
+let%expect_test "ok: incorrect send after make" =
   pp
     {|
     func sum(c chan string) {
