@@ -32,14 +32,14 @@ type ctype =
 
 type env = ctype MapIdent.t list
 type funcs_returns = ctype list
-type state = env * funcs_returns
+type typecheck_state = env * funcs_returns
 
 module CheckMonad = struct
   open Errors
   open Format
   include BaseMonad
 
-  type 'a t = (state, 'a) BaseMonad.t
+  type 'a t = (typecheck_state, 'a) BaseMonad.t
 
   let print_type = function
     | Ctype x -> PpType.print_type x
