@@ -46,7 +46,7 @@ let%expect_test "err: multiple main" =
     |};
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: main is redeclared in func() |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: main is redeclared |}]
 ;;
 
 let%expect_test "err: main with returns" =
@@ -179,7 +179,7 @@ let%expect_test "err: var redeclaration" =
     func main() {}
     |};
   [%expect
-    {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in string |}]
+    {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared |}]
 ;;
 
 (********** top func decl **********)
@@ -214,7 +214,7 @@ let%expect_test "err: repeated idents in args" =
     |};
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared |}]
 ;;
 
 let%expect_test "err: func redeclaration" =
@@ -230,7 +230,7 @@ let%expect_test "err: func redeclaration" =
     |};
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in func() int |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared |}]
 ;;
 
 let%expect_test "err: func arg redeclaration" =
@@ -243,7 +243,7 @@ let%expect_test "err: func arg redeclaration" =
     |};
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared in int |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared |}]
 ;;
 
 let%expect_test "ok: correct var multiple returns short_decl" =
@@ -329,7 +329,7 @@ let%expect_test "err: var and func with the same name" =
     |};
   [%expect
     {|
-    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared in int |}]
+    ERROR WHILE TYPECHECK WITH Multiple declaration error: foo is redeclared |}]
 ;;
 
 let%expect_test "ok: correct declarations #1" =

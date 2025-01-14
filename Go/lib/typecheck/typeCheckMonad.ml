@@ -36,16 +36,9 @@ type state = env * funcs_returns
 
 module CheckMonad = struct
   open Errors
-  open Format
   include BaseMonad
 
   type 'a t = (state, 'a) BaseMonad.t
-
-  let print_type = function
-    | Ctype x -> PpType.print_type x
-    | Ctuple x -> asprintf "(%s)" (String.concat ", " (List.map PpType.print_type x))
-    | _ -> asprintf "WTF Polymorphic type"
-  ;;
 
   let read_env =
     read
@@ -77,14 +70,12 @@ module CheckMonad = struct
     | None -> write_env (MapIdent.add ident t (List.hd env) :: List.tl env)
     | Some _ ->
       fail
-        (Type_check_error
-           (Multiple_declaration
-              (Printf.sprintf "%s is redeclared in %s" ident (print_type t))))
+        (Type_check_error (Multiple_declaration (Printf.sprintf "%s is redeclared" ident)))
   ;;
 
   let read_ident ident =
     let* env = read_env in
-    match List.find_opt (fun map -> MapIdent.mem ident map) env with
+    match List.find_opt (MapIdent.mem ident) env with
     | None -> return None
     | Some map -> return (MapIdent.find_opt ident map)
   ;;

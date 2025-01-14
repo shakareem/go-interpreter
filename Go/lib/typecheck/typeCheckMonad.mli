@@ -82,7 +82,4 @@ module CheckMonad : sig
 
   (** Remove Map from env while leaving block/anon_func/if body/for body*)
   val delete_env : unit t
-
-  (** Pretty print ctype *)
-  val print_type : ctype -> string
 end
