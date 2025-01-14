@@ -45,12 +45,12 @@ type env = ctype MapIdent.t list
 type funcs_returns = ctype list
 
 (** Current typechecker state *)
-type state = env * funcs_returns
+type typecheck_state = env * funcs_returns
 
 module CheckMonad : sig
   (** ['a t] is a typecheker that stores current state (idents and their types, external function return type)
       and the result of typechecking - ['a] (['a] or typecheck error)*)
-  type 'a t = (state, 'a) BaseMonad.t
+  type 'a t = (typecheck_state, 'a) BaseMonad.t
 
   val return : 'a -> 'a t
   val fail : Errors.error -> 'b t
@@ -60,7 +60,7 @@ module CheckMonad : sig
   val iter : ('a -> unit t) -> 'a list -> unit t
   val iter2 : ('a -> 'b -> unit t) -> 'a list -> 'b list -> unit t
   val map : ('a -> 'b t) -> 'a list -> 'b list t
-  val run : 'a t -> state -> state * ('a, Errors.error) Result.t
+  val run : 'a t -> typecheck_state -> typecheck_state * ('a, Errors.error) Result.t
 
   (** Saves current func's return type to the state (called when moving into func body) *)
   val save_func : ctype -> unit t

@@ -32,13 +32,13 @@ type ctype =
 
 type env = ctype MapIdent.t list
 type funcs_returns = ctype list
-type state = env * funcs_returns
+type typecheck_state = env * funcs_returns
 
 module CheckMonad = struct
   open Errors
   include BaseMonad
 
-  type 'a t = (state, 'a) BaseMonad.t
+  type 'a t = (typecheck_state, 'a) BaseMonad.t
 
   let read_env =
     read

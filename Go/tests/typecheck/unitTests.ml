@@ -178,8 +178,7 @@ let%expect_test "err: var redeclaration" =
     
     func main() {}
     |};
-  [%expect
-    {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared |}]
+  [%expect {| ERROR WHILE TYPECHECK WITH Multiple declaration error: a is redeclared |}]
 ;;
 
 (********** top func decl **********)
@@ -1359,6 +1358,24 @@ let%expect_test "err: redeclaration of predeclared make" =
 
     func main() {
       make(5)
+    } |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "err: assignment to toplevel function" =
+  pp {|
+    func foo() {}
+    func main() {
+      foo = nil
+    } |};
+  [%expect {| CORRECT |}]
+;;
+
+let%expect_test "ok: nil assignment to global variable with a function type" =
+  pp {|
+    var foo = func() {}
+    func main() {
+      foo = nil
     } |};
   [%expect {| CORRECT |}]
 ;;
